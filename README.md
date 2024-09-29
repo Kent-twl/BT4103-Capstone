@@ -1,11 +1,8 @@
-# re-simple-python-project
+# BT4301 Capstone Project
 
-This simple project structure template repository is adapted from the [Good Enough Project](https://github.com/bvreede/good-enough-project) Cookiecutter template by Barbara Vreede (2019).
-If you plan to develop a package, check the [template repository for a Python package](https://github.com/UtrechtUniversity/re-python-package).
+The project aims to generate key insights from trading data to improve efficiency of and add value to end-of-day reporting
 
 ## Usage
-
-Click "Use this template" at the top of this page to create a new repository with the same folder structure.
 
 ## Project Structure
 
@@ -39,5 +36,3 @@ The project structure distinguishes three kinds of folders:
 Create a citation file for your repository using [cffinit](https://citation-file-format.github.io/cff-initializer-javascript/#/)
 
 ## License
-
-This project is licensed under the terms of the [MIT License](/LICENSE).
