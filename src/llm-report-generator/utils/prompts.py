@@ -15,8 +15,8 @@ The comparison should always be for the same duration for the period before. For
 
 The overview section should look something like this for a date range: 11/01/2024 - 14/01/2024.
 "   **Overview**
-    For the period of {date range}, there was a total of {order count} orders placed. The Total Volume done for the day was {done volume}, and the Total Value was {done value}. This is (higher or lower) compared to the previous 3 days, which had {order count}
-    orders placed with a Total Volume of {done volume} and Total Value of {done value}. 
+    For the period of [date range], there was a total of [order count] orders placed. The Total Volume done for the day was [done volume], and the Total Value was [done value]. This is (higher or lower) compared to the previous 3 days, which had [order count]
+    orders placed with a Total Volume of [done volume] and Total Value of [done value]. 
 "
 
 """
