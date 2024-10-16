@@ -7,6 +7,12 @@ and alert them to possible compliance issues with ASIC. You are to generate an o
 to my specified order to ensure the report flow is synchronous.
 """
 
+## Formatting prompt
+formatting_prompt = """
+Remove or replace if necessary any characters unsupported in unicode. 
+This output will also be sent directly to the reader, so remove any sign of AI generation (eg. 'Here is the information...', or 'Feel free to ask...').
+"""
+
 ##TODO: Add example
 #Order Summary
 overview_order_prompt = """
