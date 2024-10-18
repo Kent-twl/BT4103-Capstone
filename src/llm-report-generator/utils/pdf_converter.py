@@ -4,6 +4,21 @@ import fpdf
 
 FONT_PATH = os.path.dirname(os.path.abspath(__file__)) + "/fonts/"
 
+## Write multiple pages
+def sections_to_pdf(sections, filename):
+    pdf = fpdf.FPDF(orientation='P', unit='mm', format='A4')
+    fontsize_pt = 12
+    margin_bottom_mm = 10
+    
+    ## Write each section. Helper function always creates new page by default
+    for section in sections:
+        pdf = __str_to_pdf_helper(section, pdf, fontsize_pt, margin_bottom_mm)
+    
+    pdf.output(filename, "F").encode("utf-8")
+    return
+
+
+
 def str_to_txt(text, filename):
     ## Write to text file
     mode = "x" if not os.path.exists(filename) else "w"
@@ -16,12 +31,19 @@ def str_to_pdf(text, filename):
     A4_WIDTH_MM = 210
     PT_TO_MM = 0.35
     fontsize_pt = 12
-    fontsize_mm = fontsize_pt * PT_TO_MM
+    # fontsize_mm = fontsize_pt * PT_TO_MM
     margin_bottom_mm = 10
-    character_width_mm = 6.2 * PT_TO_MM
-    width_text = A4_WIDTH_MM / character_width_mm
+    # character_width_mm = 6.2 * PT_TO_MM
+    # width_text = A4_WIDTH_MM / character_width_mm
 
     pdf = fpdf.FPDF(orientation='P', unit='mm', format='A4')
+    pdf = __str_to_pdf_helper(text, pdf, fontsize_pt, margin_bottom_mm)
+
+    pdf.output(filename, "F").encode("utf-8")
+
+
+## Helper function for writing string to PDF
+def __str_to_pdf_helper(text, pdf: fpdf.FPDF, fontsize_pt, margin_bottom_mm):
     pdf.set_auto_page_break(True, margin=margin_bottom_mm)
     pdf.add_page()
     pdf.add_font("Roboto", "", FONT_PATH + "Roboto-Regular.ttf", uni=True)
@@ -29,20 +51,6 @@ def str_to_pdf(text, filename):
     pdf.set_font(family='Roboto', size=fontsize_pt)
     
     splitted = text.split('\n')
-
-    # for para in splitted:
-    #     ## Split a paragraph into sentences that fit within page width
-    #     lines = textwrap.wrap(para, width_text)
-
-    #     if len(lines) == 0:
-    #         pdf.ln()
-
-    #     for wrap in lines:
-    #         if wrap.startswith("**"):
-    #             pdf.set_font(family='Roboto', style='B', size=fontsize_pt)
-    #         else:
-    #             pdf.set_font(family='Roboto', style='', size=fontsize_pt)
-    #         pdf.cell(0, fontsize_mm, wrap, ln=1)
 
     ## Write word for word
     words = []
@@ -69,7 +77,7 @@ def str_to_pdf(text, filename):
             pdf.set_font(family="Roboto", style="", size=fontsize_pt)
             end_bold = False
 
-    pdf.output(filename, "F").encode("utf-8")
+    return pdf
 
 
 def txt_to_pdf(source_filename, output_filename):
