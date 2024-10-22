@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import IsolationForest
+from sklearn import svm
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import seaborn as sns
 import warnings
@@ -9,6 +12,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 FILE_PATH = 'data.xlsx'
 CONTINUOUS_COLUMNS = ['Quantity', 'Price', 'Value', 'DoneVolume', 'DoneValue']
 DISCRETE_COLUMNS = ['AccID', 'AccCode', 'SecID', 'SecCode', 'Exchange', 'Destination', 'OrderGiver', 'OrderTakerUserCode', 'OriginOfOrder']
+PROPORTION = 0.01
 
 def load_csv(file_path):
     return pd.read_csv(file_path)
@@ -58,30 +62,70 @@ def discrete_outlier_analysis(df, columns, threshold_ratio=0.001):
     discrete_outlier_df.drop_duplicates()
     return outlier_dict, discrete_outlier_df
 
-def show_scatterplots(df):
+def show_scatterplots(df, title, position, axs):
     sns.scatterplot(x='Price', y='Quantity', hue='SecCode', 
-                    data=df[df['anomaly'] == 1], palette='Set2', legend='full')
+                    data=df[df['anomaly'] == 1], palette='Set2', ax=axs[position])
     sns.scatterplot(x='Price', y='Quantity', data=df[df['anomaly'] == -1],
-        color='red', marker='X', s=100, label='Anomalies')
-    plt.title('Anomaly Detection in Financial Data: Price vs Quantity')
+        color='red', marker='X', s=100, label='Anomalies', ax=axs[position])
+    axs[position].legend().set_visible(False)
+    # plt.title(f'Anomaly Detection in Financial Data: Price vs Quantity')
     plt.xlabel('Price')
     plt.ylabel('Quantity')
-    plt.legend(title='SecCode', loc='upper right')
-    plt.show()
+    # plt.legend(title='SecCode', loc='upper right')
+    # plt.show(block=False)
 
-def isolation_forest(df):
+def isolation_forest(df, axs):
     all_columns = DISCRETE_COLUMNS + CONTINUOUS_COLUMNS
     subset = df[all_columns]
     features = pd.get_dummies(subset, columns=DISCRETE_COLUMNS)
-    model = IsolationForest(n_estimators=100, contamination=0.01, random_state=42)
+    model = IsolationForest(n_estimators=100, contamination=PROPORTION, random_state=42)
     model.fit(features)
     features['anomaly'] = model.predict(features)
     subset['anomaly'] = features['anomaly']
     anomalies = features[features['anomaly'] == -1]
     print(f"Number of Anomalies Detected: {len(anomalies)}")
     print(anomalies)
-    show_scatterplots(subset)
+    show_scatterplots(subset, "Isolation Forest", 0, axs)
     return anomalies
+
+def ocsvm(df, axs):
+    all_columns = DISCRETE_COLUMNS + CONTINUOUS_COLUMNS
+    subset = df[all_columns]
+    features = pd.get_dummies(subset, columns=DISCRETE_COLUMNS)
+    scaler = StandardScaler()
+    features[CONTINUOUS_COLUMNS] = scaler.fit_transform(features[CONTINUOUS_COLUMNS])
+    model = svm.OneClassSVM(nu=PROPORTION, kernel="rbf", gamma=0.01) 
+    model.fit(features)
+    features['anomaly'] = model.predict(features)
+    subset['anomaly'] = features['anomaly']
+    anomalies = features[features['anomaly'] == -1]
+    print(f"Number of Anomalies Detected: {len(anomalies)}")
+    print(anomalies)
+    show_scatterplots(subset, "One-Class SVM", 1, axs)
+    return anomalies
+
+def gmm(df, axs):
+    all_columns = DISCRETE_COLUMNS + CONTINUOUS_COLUMNS
+    subset = df[all_columns]
+    features = pd.get_dummies(subset, columns=DISCRETE_COLUMNS)
+    model = GaussianMixture(n_components=3, covariance_type='full', random_state=42)
+    model.fit(features)
+    log_likelihood = model.score_samples(features)
+    features['log_likelihood'] = log_likelihood
+    threshold = np.percentile(log_likelihood, PROPORTION * 100)
+    anomalies = features[features['log_likelihood'] < threshold]
+    features['anomaly'] = np.where(features['log_likelihood'] < threshold, -1, 1)
+    subset['anomaly'] = features['anomaly']
+    print(f"Number of Anomalies Detected: {len(anomalies)}")
+    print(anomalies)
+    show_scatterplots(subset, "Gaussian Mixture Model", 2, axs)
+    return anomalies
+
+def get_common_anomalies(df, results1, results2, results3):
+    all_indexes = np.concatenate([results1.index, results2.index, results3.index])
+    index_counts = pd.Series(all_indexes).value_counts()
+    common_indexes = index_counts[index_counts >= 2].index
+    return df.loc[common_indexes]
 
 def main():
     df = load_excel(FILE_PATH)
@@ -112,10 +156,33 @@ def main():
         else:
             print(f"No outliers in {column}")
 
+    fig, axs = plt.subplots(3, 1, figsize=(8, 12))
+
     print('\n\n------------------------')
     print("Isolation Forest Results")
     print('------------------------\n')
-    isolation_forest_results = isolation_forest(df.copy())
-    print(isolation_forest_results.index)
+    if_results = isolation_forest(df.copy(), axs)
+    print(if_results.index)
+
+    print('\n\n------------------------')
+    print("One-Class SVM Results")
+    print('------------------------\n')
+    ocsvm_results = ocsvm(df.copy(), axs)
+    print(ocsvm_results.index)
+
+    print('\n\n------------------------')
+    print("Gaussian Mixture Model Results")
+    print('------------------------\n')
+    gmm_results = gmm(df.copy(), axs)
+    print(gmm_results.index)
+
+    plt.tight_layout()
+    plt.show()
+
+    print('\n\n------------------------')
+    print("Anomaly Detection Results")
+    print('------------------------\n')
+    overall_results = get_common_anomalies(df.copy(), if_results, ocsvm_results, gmm_results)
+    print(overall_results)
 
 main()
