@@ -4,6 +4,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn import svm
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
+import shap
 import matplotlib.pyplot as plt
 import seaborn as sns
 import warnings
@@ -78,11 +79,12 @@ def isolation_forest(df, axs):
     all_columns = DISCRETE_COLUMNS + CONTINUOUS_COLUMNS
     subset = df[all_columns]
     features = pd.get_dummies(subset, columns=DISCRETE_COLUMNS)
-    model = IsolationForest(n_estimators=100, contamination=PROPORTION, random_state=42)
+    model = IsolationForest(n_estimators=100, contamination=PROPORTION * 3, random_state=42)
     model.fit(features)
     features['anomaly'] = model.predict(features)
     subset['anomaly'] = features['anomaly']
     anomalies = features[features['anomaly'] == -1]
+    anomalies = get_top_features_if(model, features, anomalies)
     print(f"Number of Anomalies Detected: {len(anomalies)}")
     print(anomalies)
     show_scatterplots(subset, "Isolation Forest", 0, axs)
@@ -96,9 +98,11 @@ def ocsvm(df, axs):
     features[CONTINUOUS_COLUMNS] = scaler.fit_transform(features[CONTINUOUS_COLUMNS])
     model = svm.OneClassSVM(nu=PROPORTION, kernel="rbf", gamma=0.01) 
     model.fit(features)
+    # dummy = features.copy()
     features['anomaly'] = model.predict(features)
     subset['anomaly'] = features['anomaly']
     anomalies = features[features['anomaly'] == -1]
+    # anomalies = get_top_features_svm(model, dummy, anomalies)
     print(f"Number of Anomalies Detected: {len(anomalies)}")
     print(anomalies)
     show_scatterplots(subset, "One-Class SVM", 1, axs)
@@ -111,9 +115,11 @@ def gmm(df, axs):
     model = GaussianMixture(n_components=3, covariance_type='full', random_state=42)
     model.fit(features)
     log_likelihood = model.score_samples(features)
+    # dummy = features.copy()
     features['log_likelihood'] = log_likelihood
     threshold = np.percentile(log_likelihood, PROPORTION * 100)
     anomalies = features[features['log_likelihood'] < threshold]
+    # anomalies = get_top_features_gmm(model, dummy, anomalies)
     features['anomaly'] = np.where(features['log_likelihood'] < threshold, -1, 1)
     subset['anomaly'] = features['anomaly']
     print(f"Number of Anomalies Detected: {len(anomalies)}")
@@ -121,11 +127,59 @@ def gmm(df, axs):
     show_scatterplots(subset, "Gaussian Mixture Model", 2, axs)
     return anomalies
 
+def get_top_features_if(model, features, anomalies):
+    explainer = shap.Explainer(model, features)
+    shap_values = explainer(features)
+    top_feature_1 = []
+    top_feature_2 = []
+    top_feature_3 = []
+    for i in anomalies.index:
+        shap_value_anomaly = shap_values[i]        
+        top_3_features = np.argsort(np.abs(shap_value_anomaly.values))[-3:]        
+        top_feature_1.append(features.columns[top_3_features[-1]])
+        top_feature_2.append(features.columns[top_3_features[-2]])
+        top_feature_3.append(features.columns[top_3_features[-3]])
+    anomalies['top_feature_1'] = top_feature_1
+    anomalies['top_feature_2'] = top_feature_2
+    anomalies['top_feature_3'] = top_feature_3
+    return anomalies
+
+# def get_top_features_svm(model, features, anomalies):
+#     def predict_fn_svm(X):
+#         return model.decision_function(X)
+#     explainer = shap.KernelExplainer(predict_fn_svm, features)
+#     shap_values = explainer.shap_values(features)
+#     anomalies = get_top_features(shap_values, features, anomalies)
+#     return anomalies
+
+# def get_top_features_gmm(model, features, anomalies):
+#     def predict_fn_gmm(X):
+#         return model.score_samples(X)
+#     explainer = shap.KernelExplainer(predict_fn_gmm, features)
+#     shap_values = explainer.shap_values(features)
+#     anomalies = get_top_features(shap_values, features, anomalies)
+#     return anomalies
+
+# def get_top_features(shap_values, features, anomalies):
+#     top_feature_1 = []
+#     top_feature_2 = []
+#     top_feature_3 = []
+#     for i in anomalies.index:
+#         shap_value_anomaly = shap_values[i]        
+#         top_3_features = np.argsort(np.abs(shap_value_anomaly))[-3:]
+#         top_feature_1.append(features.columns[top_3_features[-1]]) 
+#         top_feature_2.append(features.columns[top_3_features[-2]])
+#         top_feature_3.append(features.columns[top_3_features[-3]])
+#     anomalies['top_feature_1'] = top_feature_1
+#     anomalies['top_feature_2'] = top_feature_2
+#     anomalies['top_feature_3'] = top_feature_3
+#     return anomalies
+
 def get_common_anomalies(df, results1, results2, results3):
-    all_indexes = np.concatenate([results1.index, results2.index, results3.index])
-    index_counts = pd.Series(all_indexes).value_counts()
-    common_indexes = index_counts[index_counts >= 2].index
-    return df.loc[common_indexes]
+    common_indexes = results1.index.intersection(results2.index.union(results3.index))
+    df = df.loc[common_indexes] 
+    df = df.merge(results1[['top_feature_1', 'top_feature_2', 'top_feature_3']], left_index=True, right_index=True, how='left')
+    return df
 
 def main():
     df = load_excel(FILE_PATH)
@@ -182,7 +236,9 @@ def main():
     print('\n\n------------------------')
     print("Anomaly Detection Results")
     print('------------------------\n')
-    overall_results = get_common_anomalies(df.copy(), if_results, ocsvm_results, gmm_results)
-    print(overall_results)
+    overall_anomaly_results = get_common_anomalies(df.copy(), if_results, ocsvm_results, gmm_results)
+    print(overall_anomaly_results)
+
+    return continuous_outlier_df, discrete_outlier_df, overall_anomaly_results
 
 main()
