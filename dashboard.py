@@ -48,6 +48,27 @@ def create_asic_reporting_dashboard():
     container = st.container(border=True)
     container.write("ASIC reporting charts to be inserted")
 
+    # Dropdown options for bar chart and pie chart
+    bar_chart_options = ['IntermediaryID', 'OriginOfOrder']
+    pie_chart_options = ['OrderCapacity', 'DirectedWholesale']
+
+    # Dropdowns for selecting the fields dynamically
+    selected_bar_chart_field = st.selectbox("Select field for Bar Chart:", bar_chart_options)
+    selected_pie_chart_field = st.selectbox("Select field for Pie Chart:", pie_chart_options)
+
+    # Bar Chart based on the selected field
+    st.subheader(f"Bar Chart - {selected_bar_chart_field}")
+    bar_chart_data = df[selected_bar_chart_field].value_counts().reset_index()
+    bar_chart_data.columns = [selected_bar_chart_field, 'Count']
+    bar_fig = px.bar(bar_chart_data, x=selected_bar_chart_field, y='Count', title=f"Count of {selected_bar_chart_field}")
+    st.plotly_chart(bar_fig)
+
+    # Pie Chart based on the selected field
+    st.subheader(f"Pie Chart - {selected_pie_chart_field}")
+    pie_chart_data = df[selected_pie_chart_field].value_counts().reset_index()
+    pie_chart_data.columns = [selected_pie_chart_field, 'Count']
+    pie_fig = px.pie(pie_chart_data, names=selected_pie_chart_field, values='Count', title=f"Count of {selected_pie_chart_field}")
+    st.plotly_chart(pie_fig)
 
 if "Business Intelligence" in st.session_state.selections:
     create_business_intelligence_dashboard()
