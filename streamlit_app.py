@@ -7,6 +7,8 @@ SELECTIONS = [
     "Business Intelligence",
     "Anomaly Detection", 
     "ASIC Reporting",
+    "Future Functionality 1", 
+    "Future Functionality 2",
 ]
 
 # Initialize selections as an empty list in session state
