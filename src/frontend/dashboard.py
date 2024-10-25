@@ -3,29 +3,36 @@ import pandas as pd
 import plotly.express as px
 import hashlib
 import os
+import sys
 import plotly.graph_objects as go
 
+ROOT_DIR = os.path.join(os.path.dirname(__file__), "../../")
+sys.path.append(ROOT_DIR)
+from src.llm.utils.fig_description_generator import fig_description_generator
 
+DATA_DIR = os.path.join(ROOT_DIR, "data")
 
 @st.cache_data  # Cache the data loading so that everytime the filter changes data won't be loaded again
-def load_data(file_path="data.xlsx"):
-    df = pd.read_excel(file_path, sheet_name="data")
+def load_data(file_path="data.xlsx", sheet_name="data"):
+    df = pd.read_excel(file_path, sheet_name)
     df.insert(0, "CumulativeNumberOfOrders", range(1, len(df) + 1))
     df["Value"] = df["Value"] * df["ValueMultiplier"]
     df["Price"] = df["Price"] * df["PriceMultiplier"]
     df["CumulativeValue"] = df["Value"].cumsum()
     df["CumulativeDoneVolume"] = df["DoneVolume"].cumsum()
     return df
-df = load_data()
+df = load_data(DATA_DIR+"/raw/updated_data.xlsx")
 
 enable_automated_report = st.sidebar.checkbox("Enable Automated Report?", value=True)
 # Add global level filters for sidebar?
 
 
-def generate_automated_report(fig):
+def generate_description(fig, dash_type="bi", chart_type="line", vars=[]):
     # Generate text in the LLM based on fig
+    ret_output = fig_description_generator(fig, dash_type, chart_type, vars)
+
     # Return the text
-    return "Zhe Ming add in your text here / call your function here"
+    return ret_output
 
 
 def create_business_intelligence_dashboard():
@@ -111,7 +118,7 @@ def create_line_chart(
     child_container.plotly_chart(fig, key=key + "line")
     if enable_automated_report:
         expander = child_container.expander("View automated report")
-        expander.write(generate_automated_report(fig))
+        expander.write(generate_description(fig))
 
 
 def create_pie_chart(parent_container, key):
@@ -127,7 +134,7 @@ def create_pie_chart(parent_container, key):
     child_container.plotly_chart(fig, key=key + "pie")
     if enable_automated_report:
         expander = child_container.expander("View automated report")
-        expander.write(generate_automated_report(fig))
+        expander.write(generate_description(fig))
 
 def create_sankey(parent_container, key):
     child_container = parent_container.container()
@@ -183,7 +190,7 @@ def create_sankey(parent_container, key):
     child_container.plotly_chart(fig, key=key + "pie")
     if enable_automated_report:
         expander = child_container.expander("View automated report")
-        expander.write(generate_automated_report(fig))
+        expander.write(generate_description(fig))
 
 # Create the BI Dashboard
 st.subheader("Business Intelligence Dashboard")
