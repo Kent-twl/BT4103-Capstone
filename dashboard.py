@@ -12,6 +12,11 @@ df = load_data()
 
 enable_automated_report = st.sidebar.checkbox("Enable Automated Report?", value=True)
 
+def generate_automated_report(fig): 
+    # Generate text in the LLM based on fig
+    # Return the text
+    pass
+
 def create_business_intelligence_dashboard(): 
     pass
 
