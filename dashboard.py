@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import hashlib
 import os
+from src.llm.utils.fig_description_generator import fig_description_generator
 
 
 @st.cache_data  # Cache the data loading so that everytime the filter changes data won't be loaded again
@@ -57,7 +58,8 @@ def create_line_chart(parent_container, key, x_axis_options=["CreateDate", "Pric
     child_container.plotly_chart(fig, key=key+"line")
     if(enable_automated_report): 
         expander = child_container.expander("View automated Report")
-        expander.write("Zhe Ming add in your text here / call your function here")
+        description = fig_description_generator(fig) #TODO: Add dash type, chart type & variables used
+        expander.write(description)
 
 
 def create_pie_chart(parent_container, key):
@@ -69,7 +71,8 @@ def create_pie_chart(parent_container, key):
     child_container.plotly_chart(fig, key=key+"pie")
     if(enable_automated_report): 
         expander = child_container.expander("View automated Report")
-        expander.write("Zhe Ming add in your text here / call your function here")
+        description = fig_description_generator(fig) #TODO: Add dash type, chart type & variables used
+        expander.write(description)
     
 
 col1, col2 = st.columns(2)

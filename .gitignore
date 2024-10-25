@@ -134,4 +134,4 @@ dmypy.json
 .pyre/
 
 # Experiment outpus
-/src/llm-report-generator/experiments/report_output
+/src/llm/experiments/report_output
