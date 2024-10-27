@@ -1,5 +1,11 @@
 import os
 import sys
+
+ROOT_DIR = os.path.join(os.path.dirname(__file__), "../../../")
+sys.path.append(ROOT_DIR)
+sys.path.append(ROOT_DIR + "/src")
+sys.path.append(os.path.join(os.path.dirname(__file__), "../")) ## LLM directory
+
 from dotenv import load_dotenv
 import plotly
 import plotly.express as px # Ensure kaleido version is 0.1.0.post1
@@ -8,7 +14,7 @@ import base64
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from . import dashboard_prompts as prompts
+from llm.prompts import dashboard_prompts as prompts
 
 ## Add directories to path
 sys.path.append(os.path.abspath(os.path.join(os.getcwd())))

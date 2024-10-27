@@ -16,7 +16,11 @@ asic_dash_prompt = """
 """
 
 anomaly_dash_prompt = """
-
+This particular chart is part of an Anomaly Detection dashboard.
+It is used by compliance officers to identify suspicious trading activities.
+The chart is generated after running the order data through an anomaly detection model.
+Write a description for this chart, with reference to the following list of flagged orders and the respective reasons they were flagged:
+{anomalies_and_reasons}
 """
 
 ## Prompts for chart type (line, bar, pie, etc.)
