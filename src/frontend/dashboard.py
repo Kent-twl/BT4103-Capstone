@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import hashlib
 import os
+import sys
 import plotly.graph_objects as go
 from datetime import datetime, date, time
 from plotly.subplots import make_subplots
@@ -38,10 +39,12 @@ exchanges = st.sidebar.multiselect(label="Filter for Exchange", options=list_of_
 df = filter_dataframe(df, "Exchange", exchanges)
 
 
-def generate_automated_report(fig):
+def generate_description(fig, dash_type="bi", chart_type="line", vars=[]):
     # Generate text in the LLM based on fig
+    ret_output = fig_description_generator(fig, dash_type, chart_type, vars)
+
     # Return the text
-    return "Zhe Ming add in your text here / call your function here"
+    return ret_output
 
 
 def create_business_intelligence_dashboard():
@@ -128,7 +131,7 @@ def create_line_chart(
     child_container.plotly_chart(fig, key=key + "line")
     if enable_automated_report:
         expander = child_container.expander("View automated report")
-        expander.write(generate_automated_report(fig))
+        expander.write(generate_description(fig))
 
 
 
@@ -190,7 +193,7 @@ def create_sankey(parent_container, key):
     child_container.plotly_chart(fig, key=key + "pie")
     if enable_automated_report:
         expander = child_container.expander("View automated report")
-        expander.write(generate_automated_report(fig))
+        expander.write(generate_description(fig))
 
 # Create the BI Dashboard
 # st.subheader("Business Intelligence Dashboard")
