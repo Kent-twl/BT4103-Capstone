@@ -1,8 +1,14 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import hashlib
+import os
+import sys
 import plotly.graph_objects as go
 
+ROOT_DIR = os.path.join(os.path.dirname(__file__), "../../")
+sys.path.append(ROOT_DIR)
+from src.llm.utils.fig_description_generator import fig_description_generator
 #functional import
 from src.functions.asic_functions import *
 
@@ -23,8 +29,12 @@ df = load_data()
 
 enable_automated_report = st.sidebar.checkbox("Enable Automated Report?", value=True)
 
-def generate_automated_report(fig):
-    return "Zhe Ming add in your text here / call your function here"
+def generate_description(fig, dash_type="bi", chart_type="line", vars=[]):
+    # Generate text in the LLM based on fig
+    ret_output = fig_description_generator(fig, dash_type, chart_type, vars)
+
+    # Return the text
+    return ret_output
 
 def create_business_intelligence_dashboard():
     pass
@@ -350,7 +360,7 @@ def create_line_chart(
     child_container.plotly_chart(fig, key=key + "line")
     if enable_automated_report:
         expander = child_container.expander("View automated report")
-        expander.write(generate_automated_report(fig))
+        expander.write(generate_description(fig))
 
 def create_pie_chart(parent_container, key):
     child_container = parent_container.container()
@@ -365,7 +375,7 @@ def create_pie_chart(parent_container, key):
     child_container.plotly_chart(fig, key=key + "pie")
     if enable_automated_report:
         expander = child_container.expander("View automated report")
-        expander.write(generate_automated_report(fig))
+        expander.write(generate_description(fig))
 
 def create_sankey(parent_container, key):
     child_container = parent_container.container()
@@ -417,4 +427,105 @@ def create_sankey(parent_container, key):
     child_container.plotly_chart(fig, key=key + "pie")
     if enable_automated_report:
         expander = child_container.expander("View automated report")
-        expander.write(generate_automated_report(fig))
+        expander.write(generate_description(fig))
+
+# Create the BI Dashboard
+st.subheader("Business Intelligence Dashboard")
+metrics_container = st.container(border=True)
+metrics_container_col1, metrics_container_col2, metrics_container_col3, metrics_container_col4, metrics_container_col5 = metrics_container.columns(5)
+metrics_container_col1.metric("Total Number of Traders", len(df["AccCode"].unique()))
+metrics_container_col2.metric("Number of Secruity Codes Traded", len(df["SecCode"].unique()))
+metrics_container_col3.metric("Total Number of Orders", f"{round((df.shape[0] + 1) / 1000, 2)}K")
+metrics_container_col4.metric("Total Volume of Orders", f"{round(df['DoneVolume'].sum() / 1_000_000, 2)}M")
+metrics_container_col5.metric("Total Value of Orders", f"{round(df['Value'].sum()/ 1_000_000, 2)}M")
+
+st_col1, st_col2 = st.columns(spec=[2, 1], vertical_alignment="top")
+col1_container = st_col1.container(border=True)
+col2_container = st_col2.container(border=True)
+col1_container_col1, col1_container_col2 = col1_container.columns(2)
+create_line_chart(
+    parent_container=col1_container_col1,
+    key="1",
+    x_axis_options=["CreateDate", "DeleteDate"],
+    y_axis_options=[
+        "CumulativeNumberOfOrders",
+        "CumulativeValue",
+        "CumulativeDoneVolume",
+    ],
+)
+create_line_chart(
+    parent_container=col1_container_col2,
+    key="2",
+    x_axis_options=["CreateDate", "DeleteDate"],
+    y_axis_options=[
+        "CumulativeNumberOfOrders",
+        "CumulativeValue",
+        "CumulativeDoneVolume",
+    ],
+    y_axis_index=1,
+)
+create_sankey(
+    parent_container=col2_container, 
+    key="3"
+)
+
+# chart_type_1 = container1.selectbox(label="Chart type", options=["Line Chart", "Pie Chart"], index=0, label_visibility="collapsed")
+# chart_type_2 = container2.selectbox(label="Chart type", options=["Line Chart", "Pie Chart"], index=1, label_visibility="collapsed")
+
+# match chart_type_1:
+#     case "Line Chart": create_line_chart(container1, "1")
+#     case "Pie Chart": create_pie_chart(container1, "1")
+
+# match chart_type_2:
+#     case "Line Chart": create_line_chart(container2, "2")
+#     case "Pie Chart": create_pie_chart(container2, "2")
+
+
+# col1, col2, col3 = st.columns(3)  # Columns are containers
+# # overview_container = st.container(border=True, key="overview_container")
+# metrics_container = st.container(key="metrics_container")
+
+
+# overview_container = col1.container(border=True)
+# overview_expander = overview_container.expander("More Details")
+# overview_expander.write("ZM insert your report here")
+
+
+# with col1:
+
+
+#     # with overview_container:
+#     with metrics_container:
+#         col_a, col_b, col_c = st.columns(3)
+#         with col_a:
+#             st.metric("Total Number of Orders", "5K")
+
+#         with col_b:
+#             st.metric("Total Volume of Orders", "40.39M")
+
+#         with col_c:
+#             st.metric("Total Value of Orders", "$33.28M")
+#     with st.expander("More Details"):
+#         st.write('''
+#             ZM insert your report here.
+#         ''')
+
+# st.header("Selections")
+# st.write(f"Your selections are {st.session_state.selections}.")
+
+# def columns_array_creator(total_number, max_column_per_row):
+#     columns_array = []
+#     count = 0
+#     while(count + max_column_per_row < total_number):
+#         count += max_column_per_row
+#         columns_array.append(max_column_per_row)
+#     if(total_number - count > 0):
+#         columns_array.append(total_number - count)
+#     return columns_array
+
+# selections = st.session_state.selections
+# unique_values = set(item.split(" - ")[0] for item in selections)
+# unique_count = len(unique_values)
+
+# outer_columns_array = columns_array_creator(unique_count, 2)
+# st.write(outer_columns_array)
