@@ -4,22 +4,38 @@ import plotly.express as px
 import hashlib
 import os
 import plotly.graph_objects as go
+from datetime import datetime, date, time
+from plotly.subplots import make_subplots
 
-
-
-@st.cache_data  # Cache the data loading so that everytime the filter changes data won't be loaded again
+@st.cache_data  # Cache the data loading so that every time the filter changes, data won't be loaded again
 def load_data(file_path="data.xlsx"):
     df = pd.read_excel(file_path, sheet_name="data")
-    df.insert(0, "CumulativeNumberOfOrders", range(1, len(df) + 1))
-    df["Value"] = df["Value"] * df["ValueMultiplier"]
-    df["Price"] = df["Price"] * df["PriceMultiplier"]
-    df["CumulativeValue"] = df["Value"].cumsum()
-    df["CumulativeDoneVolume"] = df["DoneVolume"].cumsum()
-    return df
-df = load_data()
+    df["Value"] *= df["ValueMultiplier"]
+    df["Price"] *= df["PriceMultiplier"]
+    def add_cumulative_columns(df, date_col, columns):
+        df = df.sort_values(by=date_col, ascending=True)
+        df.insert(0, f"{date_col}_CumNumberOfOrders", range(1, len(df) + 1))
+        for column in columns:
+            df[f"{date_col}_Cum{column}"] = df[column].cumsum()
+        return df
+    columns = ["Quantity", "Value", "DoneVolume", "DoneValue"]
+    df = add_cumulative_columns(df, "DeleteDate", columns)
+    df = add_cumulative_columns(df, "CreateDate", columns)
+    return df["AccCode"].unique(), df["Currency"].unique(), df["Exchange"].unique(), df
 
+
+def filter_dataframe(df, column, options):
+    return df[df[column].isin(options)]
+
+list_of_traders, list_of_currencies, list_of_exchanges, df = load_data()
+df = df[df['CreateDate'].dt.date == st.session_state.date]
 enable_automated_report = st.sidebar.checkbox("Enable Automated Report?", value=True)
-# Add global level filters for sidebar?
+traders = st.sidebar.multiselect(label="Filter for Trader", options=list_of_traders, default=list_of_traders)
+df = filter_dataframe(df, "AccCode", traders)
+currencies = st.sidebar.multiselect(label="Filter for Currency", options=list_of_currencies, default=list_of_currencies)
+df = filter_dataframe(df, "Currency", currencies)
+exchanges = st.sidebar.multiselect(label="Filter for Exchange", options=list_of_exchanges, default=list_of_exchanges)
+df = filter_dataframe(df, "Exchange", exchanges)
 
 
 def generate_automated_report(fig):
@@ -88,7 +104,7 @@ def create_line_chart(
     key,
     x_axis_options=["CreateDate", "DeleteDate"],
     x_axis_index=0,
-    y_axis_options=["CumulativeNumberOfOrders", "Value", "Quantity"],
+    y_axis_options=["CumNumberOfOrders", "CumValue", "CumDoneVolume", "CumDoneValue", "CumQuantity"],
     y_axis_index=0,
 ):
     child_container = parent_container.container()
@@ -107,27 +123,18 @@ def create_line_chart(
         key=key + "line_x_axis",
         label_visibility="collapsed",
     )
-    fig = px.line(df, x=x_axis, y=y_axis).update_layout(height=250)
+    fig = px.line(df, x=x_axis, y=x_axis+"_"+y_axis).update_layout(height=250)
+    # fig.update_layout(margin=dict(l=50, r=50, t=50, b=50))
     child_container.plotly_chart(fig, key=key + "line")
     if enable_automated_report:
         expander = child_container.expander("View automated report")
         expander.write(generate_automated_report(fig))
 
 
-def create_pie_chart(parent_container, key):
-    child_container = parent_container.container()
-    variable = child_container.selectbox(
-        label="Variable",
-        options=["OrderCapacity", "Exchange"],
-        index=0,
-        key=key + "pie_var",
-        label_visibility="collapsed",
-    )
-    fig = px.pie(df, values="Price", names=variable).update_layout(height=250)
-    child_container.plotly_chart(fig, key=key + "pie")
-    if enable_automated_report:
-        expander = child_container.expander("View automated report")
-        expander.write(generate_automated_report(fig))
+
+
+
+
 
 def create_sankey(parent_container, key):
     child_container = parent_container.container()
@@ -186,15 +193,164 @@ def create_sankey(parent_container, key):
         expander.write(generate_automated_report(fig))
 
 # Create the BI Dashboard
-st.subheader("Business Intelligence Dashboard")
+# st.subheader("Business Intelligence Dashboard")
+# Metrics container
 metrics_container = st.container(border=True)
 metrics_container_col1, metrics_container_col2, metrics_container_col3, metrics_container_col4, metrics_container_col5 = metrics_container.columns(5)
 metrics_container_col1.metric("Total Number of Traders", len(df["AccCode"].unique()))
-metrics_container_col2.metric("Number of Secruity Codes Traded", len(df["SecCode"].unique()))
+metrics_container_col2.metric("Total Number of Distinct Secruity Codes Traded", len(df["SecCode"].unique()))
 metrics_container_col3.metric("Total Number of Orders", f"{round((df.shape[0] + 1) / 1000, 2)}K")
 metrics_container_col4.metric("Total Volume of Orders", f"{round(df['DoneVolume'].sum() / 1_000_000, 2)}M")
-metrics_container_col5.metric("Total Value of Orders", f"{round(df['Value'].sum()/ 1_000_000, 2)}M")
+metrics_container_col5.metric("Total Value of Orders", f"{round(df['DoneValue'].sum()/ 1_000_000, 2)}M")
+# Create the piechart and the boxplot
+def create_box_plot_for_each_security(
+    parent_container, 
+    key, 
+    variable_options=["Price", "Quantity", "Value", "DoneVolume", "DoneValue",],
+    variable_index=0,
+):
+    child_container = parent_container.container(border=True)
+    variable = child_container.selectbox(
+        label="Variable",
+        options=variable_options,
+        index=variable_index,
+        key=key + "boxplot_var",
+        label_visibility="collapsed",
+    )
+    # Filter df for the top 5 security codes
+    top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
+    # filtered_df = df[df["SecCode"].isin(top5_sec_code)]
+    # fig = px.box(filtered_df, x="SecCode", y=variable)
+    # child_container.plotly_chart(fig, key=key + "boxplot")
+    fig = make_subplots(rows=1, cols = len(top5_sec_code))
+    for i, sec in enumerate(top5_sec_code, start=1):
+        fig.add_trace(go.Box(y=df[df['SecCode'] == sec][variable], name=sec), 
+                      row=1, col=i)
+        # fig.update_xaxes(showticklabels=False, row=1, col=i)
+    fig.update_layout(title=f"Box Plots of {variable} by SecCode", height=180, showlegend=False, margin=dict(t=40,b=0))
+    child_container.plotly_chart(fig, key=key + "boxplot")
+    if enable_automated_report:
+        expander = child_container.expander("View automated report")
+        expander.write(generate_automated_report(fig))
+def create_pie_chart_for_each_security(
+    parent_container, 
+    key, 
+    variable_options=["BuySell", "OrderSide", "PriceInstruction", "Lifetime",],
+    variable_index=0, 
+): 
+    child_container = parent_container.container(border=True)
+    variable = child_container.selectbox(
+        label="Variable",
+        options=variable_options,
+        index=variable_index,
+        key=key + "boxplot_var",
+        label_visibility="collapsed",
+    )
+    top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
+    specs = [[{"type":"domain"} for i in top5_sec_code]]
+    fig = make_subplots(rows=1, cols = len(top5_sec_code), specs=specs)
+    annotations = []
+    for i, sec in enumerate(top5_sec_code, start=1):
+        value_counts = df[df["SecCode"]==sec][variable].value_counts()
+        fig.add_trace(go.Pie(labels=value_counts.index, values=value_counts, name=sec),
+                      row=1, col=i)
+        annotations.append(dict(text=sec, x=sum(fig.get_subplot(1,i).x) / 2, y=0.5, font_size=15, showarrow=False, xanchor="center"))
+    fig.update_traces(hole=.4, hoverinfo="label+percent+name")
+    fig.update_layout(
+        title=f"Pie Chart of {variable} by SecCode", height=180, margin=dict(t=40,b=0),
+        annotations=annotations
+    )
+    child_container.plotly_chart(fig, key=key + "boxplot")
+    if enable_automated_report:
+        expander = child_container.expander("View automated report")
+        expander.write(generate_automated_report(fig))
+first_row = st.container()
+first_row_col1, first_row_col2 = first_row.columns(2)
+# pie_box_container_col1_container = pie_box_container_col1.container(border=True)
+# pie_box_container_col2_container = pie_box_container_col2.container(border=True)
+create_box_plot_for_each_security(
+    parent_container=first_row_col1, 
+    key="4",
+)
+create_pie_chart_for_each_security(
+    parent_container=first_row_col2,
+    key="5"
+)
 
+
+def create_pie_chart(parent_container, key):
+    child_container = parent_container.container(border=True)
+    variable = child_container.selectbox(
+        label="Variable",
+        options=["PriceInstruction", "BuySell", "OrderSide", "Exchange", "Destination", "Currency", "OrderType", "Lifetime"],
+        index=0,
+        key=key + "pie_var",
+        label_visibility="collapsed",
+    )
+    value_counts = df[variable].value_counts()
+    fig = px.pie(values=value_counts.values, names=value_counts.index).update_layout(height=200, margin=dict(t=30, b=0, l=0, r=0))
+    child_container.plotly_chart(fig, key=key + "pie")
+    if enable_automated_report:
+        expander = child_container.expander("View automated report")
+        expander.write(generate_automated_report(fig))
+
+def create_bar_chart(parent_container, key):
+    child_container = parent_container.container(border=True)
+    variable = child_container.selectbox(
+        label="Variable",
+        options=["Lifetime", "PriceInstruction", "BuySell", "OrderSide", "Exchange", "Destination", "Currency", "OrderType",],
+        index=0,
+        key=key + "bar_var",
+        label_visibility="collapsed",
+    )
+    value_counts = df[variable].value_counts()
+    
+    # Create a bar chart instead of a pie chart
+    fig = px.bar(x=value_counts.index, y=value_counts.values, labels={'x': variable, 'y': 'Count'})
+    fig.update_layout(height=200, margin=dict(t=30, b=0, l=0, r=0))
+
+    child_container.plotly_chart(fig, key=key + "bar")
+    
+    if enable_automated_report:
+        expander = child_container.expander("View automated report")
+        expander.write(generate_automated_report(fig))
+
+def create_histogram(parent_container, key, variable_options=["TimeInForce", "Quantity", "Value", "DoneVolume", "DoneValue",], variable_index=0):
+    child_container = parent_container.container(border=True)
+    variable = child_container.selectbox(
+        label="Variable", 
+        options=variable_options,
+        index=variable_index,
+        key=key+"histogram_variable",
+        label_visibility="collapsed",
+    )
+    fig = px.histogram(df, variable).update_layout(height=200, margin=dict(t=30, b=0, l=0, r=0))
+    child_container.plotly_chart(fig, key=key + "histogram")
+    if enable_automated_report:
+        expander = child_container.expander("View automated report")
+        expander.write(generate_automated_report(fig))
+second_row = st.container()
+second_row_col1, second_row_col2, second_row_col3 = second_row.columns([20, 40, 40])
+create_pie_chart(
+    parent_container=second_row_col1,
+    key="6" 
+    
+)
+create_bar_chart(
+    parent_container=second_row_col2,
+    key="7" 
+)
+create_histogram(
+    parent_container=second_row_col3,
+    key="8"
+)
+
+
+
+
+
+
+# Line Charts and Sankey Diagram
 st_col1, st_col2 = st.columns(spec=[2, 1], vertical_alignment="top")
 col1_container = st_col1.container(border=True)
 col2_container = st_col2.container(border=True)
@@ -202,28 +358,24 @@ col1_container_col1, col1_container_col2 = col1_container.columns(2)
 create_line_chart(
     parent_container=col1_container_col1,
     key="1",
-    x_axis_options=["CreateDate", "DeleteDate"],
-    y_axis_options=[
-        "CumulativeNumberOfOrders",
-        "CumulativeValue",
-        "CumulativeDoneVolume",
-    ],
 )
 create_line_chart(
     parent_container=col1_container_col2,
     key="2",
-    x_axis_options=["CreateDate", "DeleteDate"],
-    y_axis_options=[
-        "CumulativeNumberOfOrders",
-        "CumulativeValue",
-        "CumulativeDoneVolume",
-    ],
     y_axis_index=1,
 )
 create_sankey(
     parent_container=col2_container, 
     key="3"
 )
+
+
+
+
+
+# ============================================================
+# Section: Letting users choose the chart type (Deprecated)
+# ============================================================
 
 # chart_type_1 = container1.selectbox(label="Chart type", options=["Line Chart", "Pie Chart"], index=0, label_visibility="collapsed")
 # chart_type_2 = container2.selectbox(label="Chart type", options=["Line Chart", "Pie Chart"], index=1, label_visibility="collapsed")
