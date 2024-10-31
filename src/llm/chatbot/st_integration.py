@@ -8,7 +8,7 @@ sys.path.append(ROOT_DIR + "/src")
 sys.path.append(os.path.dirname(__file__))
 
 import streamlit as st
-from llm.chatbot.sql_agent import SQLAgent
+from llm.chatbot.multiagent_chatbot import MultiAgentChatbot
 
 DATA_DIR = ROOT_DIR + "data/raw"
 
@@ -16,15 +16,15 @@ DATA_DIR = ROOT_DIR + "data/raw"
 def main():
     @st.cache_resource
     def create_chatbot():
-        return SQLAgent(db_path=DATA_DIR + "/orders.db")
+        return MultiAgentChatbot(db_path=DATA_DIR + "/orders.db", with_memory=True)
 
-    st.title("SQL Agent")
+    st.title("Chatbot")
 
     ## Initialize chat history
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    sql_chatbot = create_chatbot()
+    chatbot = create_chatbot()
 
     ## Display chat messages from history on app rerun
     for message in st.session_state.messages:
@@ -36,7 +36,7 @@ def main():
         with st.chat_message("user"):
             st.write(prompt)
             st.session_state.messages.append({"role": "user", "content": prompt})
-        response = sql_chatbot.invoke(prompt)
+        response = chatbot.invoke(prompt)
         with st.chat_message("assistant"):
             st.write(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
