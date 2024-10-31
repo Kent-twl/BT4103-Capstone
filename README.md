@@ -36,3 +36,6 @@ The project structure distinguishes three kinds of folders:
 Create a citation file for your repository using [cffinit](https://citation-file-format.github.io/cff-initializer-javascript/#/)
 
 ## License
+
+## Dependencies and environment variables
+Python version: 3.11.7 (used for LLM features)
