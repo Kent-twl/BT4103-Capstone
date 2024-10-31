@@ -41,5 +41,5 @@ The project structure distinguishes three kinds of folders:
 ## To Run Streamlit Application
 1. Clone Main Branch
 2. Download Docker Desktop
-3. After Docker is installed, run in command line at cloned repo directory: docker build -t my-streamlit-app .
-4. To run built container, run in command line: docker run -p 8501:8501 --env-file streamlit.env -v ${PWD}:/app my-streamlit-app 
+3. After Docker is installed, run in command line at cloned repo directory: **docker build -t my-streamlit-app .**
+4. To run built container, run in command line: **docker run -p 8501:8501 --env-file streamlit.env -v ${PWD}:/app my-streamlit-app **
