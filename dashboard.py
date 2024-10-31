@@ -4,6 +4,7 @@ import plotly.express as px
 import hashlib
 import os
 import plotly.graph_objects as go
+import anomaly
 
 
 
@@ -16,7 +17,10 @@ def load_data(file_path="data.xlsx"):
     df["CumulativeValue"] = df["Value"].cumsum()
     df["CumulativeDoneVolume"] = df["DoneVolume"].cumsum()
     return df
-df = load_data()
+# df = load_data()
+anomaly_df = anomaly.load_excel('data.xlsx')
+continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
+anomalies = anomaly.anomaly_results(anomaly_df.copy())
 
 enable_automated_report = st.sidebar.checkbox("Enable Automated Report?", value=True)
 # Add global level filters for sidebar?
@@ -32,10 +36,23 @@ def create_business_intelligence_dashboard():
     pass
 
 def create_anomaly_detection_dashboard():
-    st.subheader("Anomaly Detection Dashboard")
-    container = st.container(border=True)
-    container.write("Anomaly detection charts to be inserted")
-    col1, col2, col3 = st.columns(3)
+    st.header("Anomaly Detection Dashboard")
+    with st.container(border=True):
+        st.subheader("Outlier Analysis Results")
+        st.write("Continuous Outliers")
+        st.table(continuous_outlier_df)
+        st.divider()
+        st.write("Discrete Outliers")
+        st.table(discrete_outlier_df)
+    with st.container(border=True):
+        st.subheader("Anomaly Detection Results")
+        st.write("Scatterplot of Price vs Quantity, with Anomalies marked out")
+        fig = anomaly.show_overall_scatterplot(anomaly_df, anomalies)
+        st.pyplot(fig)
+        st.divider()
+        st.write("Anomalous Trades")
+        st.table(anomalies)
+
     # fig1 =
     # col1.plotly_chart(fig1)
     # ...
