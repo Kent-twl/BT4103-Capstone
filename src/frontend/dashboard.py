@@ -5,6 +5,7 @@ import hashlib
 import os
 import sys
 import plotly.graph_objects as go
+import anomaly
 
 ROOT_DIR = os.path.join(os.path.dirname(__file__), "../../")
 sys.path.append(ROOT_DIR)
@@ -14,7 +15,7 @@ from src.functions.asic_functions import *
 
 @st.cache_data  # Cache the data loading so that every time the filter changes, data won't be loaded again
 def load_data(file_path="data.xlsx"):
-    df = pd.read_excel(file_path, sheet_name="data")
+    df = pd.read_excel(file_path)
     df.insert(0, "CumulativeNumberOfOrders", range(1, len(df) + 1))
     df["Value"] = df["Value"] * df["ValueMultiplier"]
     df["Price"] = df["Price"] * df["PriceMultiplier"]
@@ -40,10 +41,25 @@ def create_business_intelligence_dashboard():
     pass
 
 def create_anomaly_detection_dashboard():
-    st.subheader("Anomaly Detection Dashboard")
-    container = st.container(border=True)
-    container.write("Anomaly detection charts to be inserted")
-    col1, col2, col3 = st.columns(3)
+    anomaly_df = anomaly.load_excel('data.xlsx')
+    continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
+    anomalies = anomaly.anomaly_results(anomaly_df.copy())
+    st.header("Anomaly Detection Dashboard")
+    with st.container(border=True):
+        st.subheader("Outlier Analysis Results")
+        st.write("Continuous Outliers")
+        st.table(continuous_outlier_df)
+        st.divider()
+        st.write("Discrete Outliers")
+        st.table(discrete_outlier_df)
+    with st.container(border=True):
+        st.subheader("Anomaly Detection Results")
+        st.write("Scatterplot of Price vs Quantity, with Anomalies marked out")
+        fig = anomaly.show_overall_scatterplot(anomaly_df, anomalies)
+        st.pyplot(fig)
+        st.divider()
+        st.write("Anomalous Trades")
+        st.table(anomalies)
 
 def create_asic_reporting_dashboard():
     #User Selection for Dashboard Type
