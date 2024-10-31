@@ -204,9 +204,9 @@ def show_overall_scatterplot(df, anomalies):
                     data=df, palette='Set2', legend=False)
     sns.scatterplot(x='Price', y='Quantity', data=anomalies,
         color='red', marker='X', s=100, label='Anomalies')
-    ax.title('Anomaly Detection in Provided Data')
-    ax.xlabel('Price')
-    ax.ylabel('Quantity')
+    # ax.set_title('Anomaly Detection in Provided Data')
+    ax.set_xlabel('Price')
+    ax.set_ylabel('Quantity')
     return fig
 
 def main():

@@ -10,17 +10,15 @@ import anomaly
 
 @st.cache_data  # Cache the data loading so that everytime the filter changes data won't be loaded again
 def load_data(file_path="data.xlsx"):
-    df = pd.read_excel(file_path, sheet_name="data")
+    df = pd.read_excel(file_path)
     df.insert(0, "CumulativeNumberOfOrders", range(1, len(df) + 1))
     df["Value"] = df["Value"] * df["ValueMultiplier"]
     df["Price"] = df["Price"] * df["PriceMultiplier"]
     df["CumulativeValue"] = df["Value"].cumsum()
     df["CumulativeDoneVolume"] = df["DoneVolume"].cumsum()
     return df
-# df = load_data()
-anomaly_df = anomaly.load_excel('data.xlsx')
-continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
-anomalies = anomaly.anomaly_results(anomaly_df.copy())
+df = load_data()
+
 
 enable_automated_report = st.sidebar.checkbox("Enable Automated Report?", value=True)
 # Add global level filters for sidebar?
@@ -36,6 +34,9 @@ def create_business_intelligence_dashboard():
     pass
 
 def create_anomaly_detection_dashboard():
+    anomaly_df = anomaly.load_excel('data.xlsx')
+    continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
+    anomalies = anomaly.anomaly_results(anomaly_df.copy())
     st.header("Anomaly Detection Dashboard")
     with st.container(border=True):
         st.subheader("Outlier Analysis Results")
