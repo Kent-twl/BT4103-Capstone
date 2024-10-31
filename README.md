@@ -35,8 +35,8 @@ The project structure distinguishes three kinds of folders:
 ## License
 
 ## Dependencies and environment variables
-Python version: 3.11.7 
-Docker Desktop: https://docs.docker.com/desktop/install/windows-install/
+- Python version: 3.11.7 
+- Docker Desktop: https://docs.docker.com/desktop/install/windows-install/
 
 ## To Run Streamlit Application
 1. Clone Main Branch
