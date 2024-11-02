@@ -9,9 +9,18 @@ import anomaly
 
 ROOT_DIR = os.path.join(os.path.dirname(__file__), "../../")
 sys.path.append(ROOT_DIR)
-from src.llm.utils.fig_description_generator import fig_description_generator
+# from src.llm.utils.fig_description_generator import fig_description_generator
 #functional import
 from src.functions.asic_functions import *
+
+@st.cache_data
+def anom_results():
+    anomaly_df = anomaly.load_excel('data.xlsx')
+    continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
+    anomalies = anomaly.anomaly_results(anomaly_df.copy())
+    return anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies
+
+anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies = anom_results()
 
 @st.cache_data  # Cache the data loading so that every time the filter changes, data won't be loaded again
 def load_data(file_path="data.xlsx"):
@@ -175,22 +184,26 @@ def create_business_intelligence_dashboard():
     )
 
 def create_anomaly_detection_dashboard():
-    anomaly_df = anomaly.load_excel('data.xlsx')
-    continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
-    anomalies = anomaly.anomaly_results(anomaly_df.copy())
     st.header("Anomaly Detection Dashboard")
     with st.container(border=True):
         st.subheader("Outlier Analysis Results")
         st.write("Continuous Outliers")
-        st.table(continuous_outlier_df)
+        st.dataframe(continuous_outlier_df, height = 300)
         st.divider()
         st.write("Discrete Outliers")
-        st.table(discrete_outlier_df)
+        st.dataframe(discrete_outlier_df, height = 300)
     with st.container(border=True):
         st.subheader("Anomaly Detection Results")
-        st.write("Scatterplot of Price vs Quantity, with Anomalies marked out")
-        fig = anomaly.show_overall_scatterplot(anomaly_df, anomalies)
-        st.pyplot(fig)
+        st.write("Scatterplot of Price vs Quantity, with Anomalies marked out")  
+        st.write("Please select the field you would like to see the data coloured by.")
+        scatter_options = ['SecCode', 'AccCode', 'OrderSide', 'OrderGiver', 'OriginOfOrder', 'Exchange', 'Destination']
+        selected_field = st.selectbox('Field: ', scatter_options)
+        if selected_field:
+            fig = anomaly.show_overall_scatterplot(anomaly_df, anomalies, selected_field)
+            st.pyplot(fig)
+        else:
+            fig = anomaly.show_overall_scatterplot(anomaly_df, anomalies, 'SecCode')
+            st.pyplot(fig)
         st.divider()
         st.write("Anomalous Trades")
         st.table(anomalies)
