@@ -1,6 +1,15 @@
+import os
+import sys
 from sqlalchemy import create_engine, MetaData, Table, text
 import pandas as pd
 from pprint import pprint
+
+ROOT_DIR = os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir)
+sys.path.append(ROOT_DIR)
+sys.path.append(ROOT_DIR + "/src")
+sys.path.append(os.path.dirname(__file__))
+
+DATA_DIR = ROOT_DIR + "/data/raw"
 
 ## Creating the orders database
 def create_orders_db(source_file, dest_dir, show_samples=False):
@@ -30,3 +39,7 @@ def create_orders_db(source_file, dest_dir, show_samples=False):
     engine.dispose()
 
     print("Database created successfully!")
+
+
+if __name__ == "__main__":
+    create_orders_db(source_file=DATA_DIR+"/anonymised_data_v3.csv", dest_dir=DATA_DIR, show_samples=True)

@@ -18,6 +18,7 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, ToolMessage
 from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
+from langchain_community.tools.yahoo_finance_news import YahooFinanceNewsTool
 from langgraph.prebuilt import ToolNode
 from langchain import hub
 from langgraph.checkpoint.memory import MemorySaver
@@ -40,7 +41,7 @@ from llm.prompts.chatbot_prompts import *
 def create_agent(llm, tools, system_message: str):
     prompt = ChatPromptTemplate.from_messages(
         [
-            SystemMessage(multiagent_graph_agent_prompt            ),
+            SystemMessage(multiagent_graph_agent_prompt),
             MessagesPlaceholder(variable_name="messages")
         ]
     )
@@ -52,7 +53,7 @@ def create_agent(llm, tools, system_message: str):
 
 
 ## Function for creating a chatbot with no tool-calling capabilities
-def create_chatbot(llm, other_assistants, system_message: str):
+def create_entry_point(llm, other_assistants, system_message: str):
     prompt = ChatPromptTemplate.from_messages(
         [
             SystemMessage(multiagent_graph_chatbot_prompt),
@@ -119,42 +120,70 @@ def remove_final_answer_prefix(message):
 
 
 ## Function for creating graph with SQL agent and basic chatbot
-def create_multiagent_graph(db_path, llm, with_memory=False):
-    db = SQLDatabase.from_uri(f"sqlite:///{db_path}")
-    sql_toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-    sql_tools = sql_toolkit.get_tools()
+def create_multiagent_graph(main_system_message, db_path, llm, agents, with_memory=False):
+    ## Initialize variables
+    all_tools = [] ## Full list of all tools used in network
+    other_assistants = [] ## Descriptions for assistants other than the chatbot
     
-    ## Create agents
-    sql_agent = create_agent(
-        llm, 
-        sql_tools,
-        system_message=hub.pull("langchain-ai/sql-agent-system-prompt").format(dialect="SQLite", top_k=5)
-    )
+    if "sql" in agents:
+        ## Set up for SQL agent
+        db = SQLDatabase.from_uri(f"sqlite:///{db_path}")
+        sql_toolkit = SQLDatabaseToolkit(db=db, llm=llm)
+        sql_tools = sql_toolkit.get_tools()
+        all_tools.append(sql_tools)
 
-    ## Create a partial function pre-filled with SQL agent details that accepts state as input
-    sql_node = functools.partial(
-        agent_node, 
-        agent=sql_agent,
-        name="sql_agent"
-    )
+        ## Create agents
+        sql_agent = create_agent(
+            llm, 
+            sql_tools,
+            system_message=hub.pull("langchain-ai/sql-agent-system-prompt").format(dialect="SQLite", top_k=5)
+        )
 
-    ## Create chatbot
-    chatbot = create_chatbot(
+        ## Create a partial function pre-filled with SQL agent details that accepts state as input
+        sql_node = functools.partial(
+            agent_node, 
+            agent=sql_agent,
+            name="sql_agent"
+        )
+
+        other_assistants.append("SQL assistant - Can query database to answer questions.")
+
+    if "yfinance" in agents:
+        ## Set up for Yahoo Finance agent
+        yfinance_tools = [YahooFinanceNewsTool()]
+        all_tools.append(yfinance_tools)
+
+        ## Create agent
+        yfinance_agent = create_agent(
+            llm, 
+            yfinance_tools,
+            system_message="""
+                You are responsible for retrieving useful info from Yahoo Finance to support the other assistants. 
+                Refer to relevant news to justify or explain the findings made by the other assistants.
+            """
+        )
+
+        ## Partial function that serves as the node for the Yahoo Finance agent
+        yfinance_node = functools.partial(
+            agent_node, 
+            agent=yfinance_agent,
+            name="yfinance_agent"
+        )
+
+        other_assistants.append("Yahoo Finance assistant - Provides insights from online financial news.")
+
+    ## Create chatbot, ie the entry point of the multi-agent network
+    entry_point = create_entry_point(
         llm,
-        system_message="""
-            The user you are assisting today is a trader at an Australian financial institution,
-            interested in analyzing some trading data and other matters related to finance and trading.
-        """,
-        other_assistants=[
-            "1. SQL assistant - Can query database to answer questions."
-        ]
+        system_message=main_system_message,
+        other_assistants=other_assistants
     )
 
     ## Create a chatbot node
-    chatbot_node = functools.partial(
+    entry_point_node = functools.partial(
         basic_node,
-        runnable=chatbot,
-        name="chatbot"
+        runnable=entry_point,
+        name="entry_point"
     )
 
     ## Define tool node
@@ -163,36 +192,68 @@ def create_multiagent_graph(db_path, llm, with_memory=False):
 
     ## Create graph
     workflow = StateGraph(State)
-    workflow.add_node("sql_agent", sql_node)
-    workflow.add_node("chatbot", chatbot_node)
+    workflow.add_node("entry_point", entry_point_node)
+    workflow.add_node("sql_agent", sql_node) if "sql" in agents else None
+    workflow.add_node("yfinance_agent", yfinance_node) if "yfinance" in agents else None
     workflow.add_node("call_tool", tool_node)
 
     ## Agent nodes go to router
+    if "sql" in agents:
+        workflow.add_conditional_edges(
+            "sql_agent", 
+            router, 
+            {
+                "continue": "yfinance_agent" if "yfinance" in agents else "entry_point", 
+                "call_tool": "call_tool", 
+                END: END
+            } ## Path map that maps router output to node names
+        )
+    
+    if "yfinance" in agents:
+        workflow.add_conditional_edges(
+            "yfinance_agent", 
+            router, 
+            {
+                "continue": "sql_agent" if "sql" in agents else "entry_point", 
+                "call_tool": "call_tool", 
+                END: END
+            }
+        )
+    
+    next_node = "sql_agent" if "sql" in agents else \
+        "yfinance_agent" if "yfinance" in agents else \
+        END ## Next node to go to after the entry point
     workflow.add_conditional_edges(
-        "sql_agent", 
+        "entry_point", 
         router, 
-        {"continue": "chatbot", "call_tool": "call_tool", END: END} ## Path map that maps router output to node names
+        {
+            "continue": next_node, 
+            END: END
+        }
     )
-    workflow.add_conditional_edges(
-        "chatbot", 
-        router, 
-        {"continue": "sql_agent", END: END} ## Path map that maps router output to node names
-    )
+    
     ## Tool node routes back to the agent that called it, ie the sender
+    tool_node_path_map = {"entry_point": "entry_point"}
+    if "sql" in agents:
+        tool_node_path_map["sql_agent"] = "sql_agent"
+    if "yfinance" in agents:
+        tool_node_path_map["yfinance_agent"] = "yfinance_agent"
+    
     workflow.add_conditional_edges(
         "call_tool",
         lambda state: state["sender"],
-        {"chatbot": "chatbot", "sql_agent": "sql_agent"}
+        tool_node_path_map
     )
-    workflow.add_edge(START, "chatbot")
+
+    workflow.add_edge(START, "entry_point")
 
     ## Compile graph
     if with_memory:
         memory = MemorySaver()
         graph = workflow.compile(checkpointer=memory)
         config = {"configurable": {"thread_id": "1"}}
-        return graph, config
-    
-    graph = workflow.compile()
+    else:
+        graph = workflow.compile()
+        config = None
 
-    return graph, None
+    return graph, config

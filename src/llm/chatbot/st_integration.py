@@ -8,7 +8,7 @@ sys.path.append(ROOT_DIR + "/src")
 sys.path.append(os.path.dirname(__file__))
 
 import streamlit as st
-from llm.chatbot.multiagent_chatbot import MultiAgentChatbot
+from llm.multiagent_network import MultiAgentNetwork
 
 DATA_DIR = ROOT_DIR + "data/raw"
 
@@ -16,7 +16,11 @@ DATA_DIR = ROOT_DIR + "data/raw"
 def main():
     @st.cache_resource
     def create_chatbot():
-        return MultiAgentChatbot(db_path=DATA_DIR + "/orders.db", with_memory=True)
+        main_system_message = """
+            The user you are assisting today is a trader at an Australian financial institution,
+            interested in analyzing some trading data and other matters related to finance and trading.
+        """
+        return MultiAgentNetwork(main_system_message, db_path=DATA_DIR + "/orders.db", agents=["sql"], with_memory=True)
 
     st.title("Chatbot")
 
