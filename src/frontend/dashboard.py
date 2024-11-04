@@ -343,8 +343,8 @@ def create_business_intelligence_dashboard():
         x_axis_index=0,
         y_axis_options=[
             "CumulativeNumberOfOrders",
-            "CumulativeValue",
-            "CumulativeDoneVolume",
+            "Value",
+            "DoneVolume",
             "CumulativeDoneValue",
             "CumulativeQuantity",
         ],
@@ -596,36 +596,80 @@ def create_asic_reporting_dashboard():
             else:
                 filtered_df = df
             
-            # Group by ExecutionTime and AccCode to show cumulative number of orders
-            filtered_df['ExecutionTime'] = (filtered_df['UpdateDate'] - filtered_df['CreateDate']).dt.total_seconds() / 60 
+            # Calculate ExecutionTime in minutes
+            filtered_df['ExecutionTime'] = round((filtered_df['UpdateDate'] - filtered_df['CreateDate']).dt.total_seconds() / 60)
             filtered_df['CumulativeNumberOfOrders'] = filtered_df['CreateDate_CumulativeNumberOfOrders']
-            area_data = filtered_df.groupby(['ExecutionTime', 'AccCode'])['CumulativeNumberOfOrders'].sum().reset_index()
-            area_fig = px.area(area_data, x="ExecutionTime", y="CumulativeNumberOfOrders", color="AccCode",
-                            title=f"{selected_chart} - {selected_acccode if selected_acccode != 'All' else 'All Accounts'}",
-                            labels={"ExecutionTime": "Execution Time", "CumulativeNumberOfOrders": "Cumulative Number of Orders"})
+
+            # Calculate the count and percentage of orders filled immediately (ExecutionTime = 0)
+            immediate_filled_orders = filtered_df[filtered_df['ExecutionTime'] == 0]['CumulativeNumberOfOrders'].sum()
+            total_orders = filtered_df['CumulativeNumberOfOrders'].sum()
+            immediate_filled_percentage = (immediate_filled_orders / total_orders) * 100 if total_orders > 0 else 0
+
+            # Display the metric with both the percentage and raw count
+            st.markdown("""
+                <div style="text-align: center; padding: 10px; border-radius: 8px; background-color: #000000; color: white;">
+                    <h3>Orders Filled Immediately</h3>
+                    <h1 style="font-size: 40px;">{:.2f}%</h1>
+                    <p style="font-size: 18px;">({:,} out of {:,} orders)</p>
+                </div>
+            """.format(immediate_filled_percentage, immediate_filled_orders, total_orders), unsafe_allow_html=True)
+
+            # Filter data for orders not filled immediately (ExecutionTime > 0)
+            not_filled_immediately_df = filtered_df[filtered_df['ExecutionTime'] > 0]
+
+            # Group by ExecutionTime and AccCode for the line graph
+            area_data = not_filled_immediately_df.groupby(['ExecutionTime', 'AccCode'])['CumulativeNumberOfOrders'].sum().reset_index()
+
+            # Create the line graph for orders not filled immediately
+            area_fig = px.area(
+                area_data, 
+                x="ExecutionTime", 
+                y="CumulativeNumberOfOrders", 
+                color="AccCode",
+                title=f"{selected_chart} - {selected_acccode if selected_acccode != 'All' else 'All Accounts'}",
+                labels={"ExecutionTime": "Execution Time (minutes)", "CumulativeNumberOfOrders": "Cumulative Number of Orders"}
+            )
+
+            # Display the line graph in Streamlit
             st.plotly_chart(area_fig)
             
             # Show additional details if a specific AccCode is selected
             if selected_acccode != "All":
-                st.markdown(f"### Detailed View for Account Code: {selected_acccode}")
-                
                 # Display cumulative orders over time for the selected AccCode
                 cumulative_orders = filtered_df[['CreateDate', 'CumulativeNumberOfOrders']].drop_duplicates().sort_values(by='CreateDate')
-                cumulative_orders_fig = px.line(cumulative_orders, x="CreateDate", y="CumulativeNumberOfOrders",
+                cumulative_orders_fig = px.bar(cumulative_orders, x="CreateDate", y="CumulativeNumberOfOrders",
                                                 title="Cumulative Number of Orders Over Time",
-                                                labels={"CreateDate": "Date", "CumulativeNumberOfOrders": "Cumulative Number of Orders"})
+                                                labels={"CreateDate": "Timestamp", "CumulativeNumberOfOrders": " Number of Orders"})
                 st.plotly_chart(cumulative_orders_fig)
                 
-                # Display a breakdown of orders by ExecutionTime within this specific AccCode
-                time_in_force_data = filtered_df.groupby('ExecutionTime')['CumulativeNumberOfOrders'].sum().reset_index()
-                time_in_force_fig = px.bar(time_in_force_data, x="ExecutionTime", y="CumulativeNumberOfOrders",
-                                        title="Number of Orders by Time Taken for Execution",
-                                        labels={"ExecutionTime": "Execution Time", "CumulativeNumberOfOrders": "Number of Orders"})
-                st.plotly_chart(time_in_force_fig)
-                
+                # # Calculate the count and percentage of orders filled immediately
+                # immediate_fill_count = filtered_df[filtered_df['ExecutionTime'] == 0]['CumulativeNumberOfOrders'].sum()
+                # total_order_count = filtered_df['CumulativeNumberOfOrders'].sum()
+                # immediate_fill_percentage = (immediate_fill_count / total_order_count) * 100 if total_order_count > 0 else 0
+
+                # # Display the metrics with custom styling
+                # st.markdown("""
+                #     <div style="text-align: center; padding: 10px; border-radius: 8px; background-color: #4CAF50; color: white;">
+                #         <h3>Orders Filled Immediately</h3>
+                #         <h1 style="font-size: 40px;">{:.2f}%</h1>
+                #         <p style="font-size: 18px;">({:,} out of {:,} orders)</p>
+                #     </div>
+                # """.format(immediate_fill_percentage, immediate_fill_count, total_order_count), unsafe_allow_html=True)
+
+                # # Display a breakdown of orders by ExecutionTime within this specific AccCode
+                # execution_time_data = filtered_df.groupby('ExecutionTime')['CumulativeNumberOfOrders'].sum().reset_index()
+                # execution_time_fig = px.bar(
+                #     execution_time_data, 
+                #     x="ExecutionTime", 
+                #     y="CumulativeNumberOfOrders",
+                #     title="Number of Orders by Time Taken for Execution",
+                #     labels={"ExecutionTime": "Execution Time", "CumulativeNumberOfOrders": "Number of Orders"}
+                # )
+                # st.plotly_chart(execution_time_fig)
+
                 # Show additional data details in a table
                 st.write("Additional data details:")
-                st.dataframe(filtered_df[['AccCode','CreateDate', 'UpdateDate', 'OrderNo', 'OrderSide', 'OrderType', 'ExecutionTime',  'DoneVolume', 'Price', 'Quantity', 'ExecutionVenue']])
+                st.dataframe(filtered_df[['AccCode', 'CreateDate', 'UpdateDate', 'OrderNo', 'OrderSide', 'OrderType', 'ExecutionTime', 'DoneVolume', 'Price', 'Quantity', 'ExecutionVenue']])
             
         elif selected_chart == "RG 265.12 (Supervision of Market Participants)":
             st.subheader(selected_chart)
@@ -642,8 +686,8 @@ def create_asic_reporting_dashboard():
             
             # Summary data for all AccCodes or filtered by selected AccCode
             summary_data = filtered_df.groupby('AccCode').agg({
-                'CumulativeDoneVolume': 'last',  # Assuming cumulative sum is already in `CumulativeDoneVolume`
-                'CumulativeValue': 'last'  # Assuming cumulative sum is in `CumulativeValue`
+                'DoneVolume': 'sum',  # sum DoneValue
+                'Value': 'sum'  # sum Value
             }).reset_index()
             summary_data.columns = ['AccCode', 'Total Done Volume', 'Total Cumulative Value']
             st.dataframe(summary_data)
@@ -653,17 +697,17 @@ def create_asic_reporting_dashboard():
                 st.markdown(f"### Detailed View for Account Code: {selected_acccode}")
                 
                 # Display cumulative done volume over time for the selected AccCode
-                cumulative_done_volume = filtered_df[['CreateDate', 'CumulativeDoneVolume']].drop_duplicates().sort_values(by='CreateDate')
-                done_volume_fig = px.line(cumulative_done_volume, x="CreateDate", y="CumulativeDoneVolume",
-                                        title="Cumulative Done Volume Over Time",
-                                        labels={"CreateDate": "Date", "CumulativeDoneVolume": "Cumulative Done Volume"})
+                cumulative_done_volume = filtered_df[['CreateDate', 'DoneVolume']].drop_duplicates().sort_values(by='CreateDate')
+                done_volume_fig = px.line(cumulative_done_volume, x="CreateDate", y="DoneVolume",
+                                        title="Done Volume Over Time",
+                                        labels={"CreateDate": "Date", "DoneVolume": "Done Volume"})
                 st.plotly_chart(done_volume_fig)
                 
                 # Display cumulative value over time for the selected AccCode
-                cumulative_value = filtered_df[['CreateDate', 'CumulativeValue']].drop_duplicates().sort_values(by='CreateDate')
-                value_fig = px.line(cumulative_value, x="CreateDate", y="CumulativeValue",
-                                    title="Cumulative Order Value Over Time",
-                                    labels={"CreateDate": "Date", "CumulativeValue": "Cumulative Value"})
+                cumulative_value = filtered_df[['CreateDate', 'Value']].drop_duplicates().sort_values(by='CreateDate')
+                value_fig = px.line(cumulative_value, x="CreateDate", y="Value",
+                                    title="Order Value Over Time",
+                                    labels={"CreateDate": "Date", "Value": "Order Value"})
                 st.plotly_chart(value_fig)
                 
                 # Display a breakdown of average done volume per order type within this specific AccCode
