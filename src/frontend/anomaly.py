@@ -12,7 +12,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 FILE_PATH = 'data.xlsx'
 CONTINUOUS_COLUMNS = ['Quantity', 'Price', 'Value', 'DoneVolume', 'DoneValue']
-DISCRETE_COLUMNS = ['AccID', 'AccCode', 'SecID', 'SecCode', 'Exchange', 'Destination', 'OrderGiver', 'OrderTakerUserCode', 'OriginOfOrder']
+DISCRETE_COLUMNS = ['AccCode', 'BuySell', 'Side', 'OrderSide', 'SecCode', 'Exchange', 'Destination', 'Lifetime', 'OrderGiver', 'OrderTakerUserCode']
 PROPORTION = 0.01
 
 def load_csv(file_path):
@@ -205,6 +205,7 @@ def show_overall_scatterplot(df, anomalies, field):
     sns.scatterplot(x='Price', y='Quantity', data=anomalies,
         color='red', marker='X', s=100, label='Anomalies')
     # ax.set_title('Anomaly Detection in Provided Data')
+    plt.title("Anomales Detected in Provided Data")
     ax.set_xlabel('Price')
     ax.set_ylabel('Quantity')
     return fig

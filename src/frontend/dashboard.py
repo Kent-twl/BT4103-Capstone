@@ -30,7 +30,7 @@ def load_data(file_path="data.xlsx"):
     df["Price"] = df["Price"] * df["PriceMultiplier"]
     df["CumulativeValue"] = df["Value"].cumsum()
     df["CumulativeDoneVolume"] = df["DoneVolume"].cumsum()
-    df["OriginOfOrder"] = df["OriginOfOrder"].astype(str)
+    # df["OriginOfOrder"] = df["OriginOfOrder"].astype(str)
     #Threshold for Execution Venue Classification
     df["ExecutionVenueCategory"] = df["ExecutionVenue"].apply(classify_execution_venue)
     return df
@@ -187,14 +187,23 @@ def create_anomaly_detection_dashboard():
     st.header("Anomaly Detection Dashboard")
     with st.container(border=True):
         st.subheader("Outlier Analysis Results")
-        st.write("Continuous Outliers")
-        st.dataframe(continuous_outlier_df, height = 300)
-        st.divider()
-        st.write("Discrete Outliers")
-        st.dataframe(discrete_outlier_df, height = 300)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("Continuous Outliers")
+            st.divider()
+            if not continuous_outlier_df.empty:
+                st.dataframe(continuous_outlier_df, height = 300)
+            else:
+                st.write("There are no continuous outliers identified.")
+        with col2:
+            st.write("Discrete Outliers")
+            st.divider()
+            if not discrete_outlier_df.empty:
+                st.dataframe(discrete_outlier_df, height = 300)
+            else:
+                st.write("There are no discrete outliers identified.")
     with st.container(border=True):
         st.subheader("Anomaly Detection Results")
-        st.write("Scatterplot of Price vs Quantity, with Anomalies marked out")  
         st.write("Please select the field you would like to see the data coloured by.")
         scatter_options = ['SecCode', 'AccCode', 'OrderSide', 'OrderGiver', 'OriginOfOrder', 'Exchange', 'Destination']
         selected_field = st.selectbox('Field: ', scatter_options)
