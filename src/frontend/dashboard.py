@@ -17,14 +17,14 @@ sys.path.append(ROOT_DIR)
 #functional import
 from src.functions.asic_functions import *
 
-@st.cache_data
-def anom_results():
-    anomaly_df = anomaly.load_excel('data.xlsx')
-    continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
-    anomalies = anomaly.anomaly_results(anomaly_df.copy())
-    return anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies
+# @st.cache_data
+# def anom_results():
+#     anomaly_df = anomaly.load_excel('data.xlsx')
+#     continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
+#     anomalies = anomaly.anomaly_results(anomaly_df.copy())
+#     return anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies
 
-anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies = anom_results()
+# anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies = anom_results()
 
 
 @st.cache_data  # Cache the data loading so that every time the filter changes, data won't be loaded again
@@ -162,7 +162,7 @@ def create_business_intelligence_dashboard():
             "OrderSide",
             # "PriceInstruction",
             "Lifetime",
-            "TimeInForce",
+            "ExecutionTime",
         ],
         variable_index=0,
     ):
@@ -228,7 +228,7 @@ def create_business_intelligence_dashboard():
                 "Destination",
                 "Currency",
                 "OrderType",
-                "TimeInForce",
+                "ExecutionTime",
             ],
             index=0,
             key=key + "pie_variable",
@@ -259,7 +259,7 @@ def create_business_intelligence_dashboard():
                 "Destination",
                 "Currency",
                 "OrderType",
-                "TimeInForce",
+                "ExecutionTime",
             ],
             index=0,
             key=key + "bar_var",
@@ -596,11 +596,13 @@ def create_asic_reporting_dashboard():
             else:
                 filtered_df = df
             
-            # Group by TimeInForce and AccCode to show cumulative number of orders
-            area_data = filtered_df.groupby(['TimeInForce', 'AccCode'])['CumulativeNumberOfOrders'].sum().reset_index()
-            area_fig = px.area(area_data, x="TimeInForce", y="CumulativeNumberOfOrders", color="AccCode",
+            # Group by ExecutionTime and AccCode to show cumulative number of orders
+            filtered_df['ExecutionTime'] = (filtered_df['UpdateDate'] - filtered_df['CreateDate']).dt.total_seconds() / 60 
+            filtered_df['CumulativeNumberOfOrders'] = filtered_df['CreateDate_CumulativeNumberOfOrders']
+            area_data = filtered_df.groupby(['ExecutionTime', 'AccCode'])['CumulativeNumberOfOrders'].sum().reset_index()
+            area_fig = px.area(area_data, x="ExecutionTime", y="CumulativeNumberOfOrders", color="AccCode",
                             title=f"{selected_chart} - {selected_acccode if selected_acccode != 'All' else 'All Accounts'}",
-                            labels={"TimeInForce": "Time In Force", "CumulativeNumberOfOrders": "Cumulative Number of Orders"})
+                            labels={"ExecutionTime": "Execution Time", "CumulativeNumberOfOrders": "Cumulative Number of Orders"})
             st.plotly_chart(area_fig)
             
             # Show additional details if a specific AccCode is selected
@@ -614,16 +616,16 @@ def create_asic_reporting_dashboard():
                                                 labels={"CreateDate": "Date", "CumulativeNumberOfOrders": "Cumulative Number of Orders"})
                 st.plotly_chart(cumulative_orders_fig)
                 
-                # Display a breakdown of orders by TimeInForce within this specific AccCode
-                time_in_force_data = filtered_df.groupby('TimeInForce')['CumulativeNumberOfOrders'].sum().reset_index()
-                time_in_force_fig = px.bar(time_in_force_data, x="TimeInForce", y="CumulativeNumberOfOrders",
+                # Display a breakdown of orders by ExecutionTime within this specific AccCode
+                time_in_force_data = filtered_df.groupby('ExecutionTime')['CumulativeNumberOfOrders'].sum().reset_index()
+                time_in_force_fig = px.bar(time_in_force_data, x="ExecutionTime", y="CumulativeNumberOfOrders",
                                         title="Number of Orders by Time Taken for Execution",
-                                        labels={"TimeInForce": "Time In Force", "CumulativeNumberOfOrders": "Number of Orders"})
+                                        labels={"ExecutionTime": "Execution Time", "CumulativeNumberOfOrders": "Number of Orders"})
                 st.plotly_chart(time_in_force_fig)
                 
                 # Show additional data details in a table
                 st.write("Additional data details:")
-                st.dataframe(filtered_df[['AccCode','CreateDate', 'OrderNo', 'OrderSide', 'OrderType', 'TimeInForce',  'DoneVolume', 'Price', 'Quantity', 'ExecutionVenue']])
+                st.dataframe(filtered_df[['AccCode','CreateDate', 'UpdateDate', 'OrderNo', 'OrderSide', 'OrderType', 'ExecutionTime',  'DoneVolume', 'Price', 'Quantity', 'ExecutionVenue']])
             
         elif selected_chart == "RG 265.12 (Supervision of Market Participants)":
             st.subheader(selected_chart)
