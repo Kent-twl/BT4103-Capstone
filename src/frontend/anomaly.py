@@ -48,7 +48,7 @@ def discrete_outliers_frequency(df, column, threshold_ratio):
     outlier_rows = df[df[column].isin(outliers.index)]
     return outliers, outlier_rows
 
-def discrete_outlier_analysis(df, columns, threshold_ratio=0.0005):
+def discrete_outlier_analysis(df, columns, threshold_ratio=0.001):
     outlier_dict = {}
     new_columns = df.columns.tolist()
     new_columns.append('Cause')
@@ -86,8 +86,7 @@ def isolation_forest(df, axs):
     subset['anomaly'] = features['anomaly']
     anomalies = features[features['anomaly'] == -1]
     anomalies = get_top_features_if(model, features, anomalies)
-    # print(f"Number of Anomalies Detected: {len(anomalies)}")
-    # print(anomalies)
+    print(f"Number of Anomalies Detected: {len(anomalies)}")
     # show_scatterplots(subset, "Isolation Forest", 0, axs)
     return anomalies
 
@@ -100,13 +99,10 @@ def ocsvm(df, axs):
     features[CONTINUOUS_COLUMNS] = scaler.fit_transform(features[CONTINUOUS_COLUMNS])
     model = svm.OneClassSVM(nu=PROPORTION, kernel="rbf", gamma=0.01) 
     model.fit(features)
-    # dummy = features.copy()
     features['anomaly'] = model.predict(features)
     subset['anomaly'] = features['anomaly']
     anomalies = features[features['anomaly'] == -1]
-    # anomalies = get_top_features_svm(model, dummy, anomalies)
-    # print(f"Number of Anomalies Detected: {len(anomalies)}")
-    # print(anomalies)
+    print(f"Number of Anomalies Detected: {len(anomalies)}")
     # show_scatterplots(subset, "One-Class SVM", 1, axs)
     return anomalies
 
@@ -118,15 +114,12 @@ def gmm(df, axs):
     model = GaussianMixture(n_components=3, covariance_type='full', random_state=42)
     model.fit(features)
     log_likelihood = model.score_samples(features)
-    # dummy = features.copy()
     features['log_likelihood'] = log_likelihood
     threshold = np.percentile(log_likelihood, PROPORTION * 100)
     anomalies = features[features['log_likelihood'] < threshold]
-    # anomalies = get_top_features_gmm(model, dummy, anomalies)
     features['anomaly'] = np.where(features['log_likelihood'] < threshold, -1, 1)
     subset['anomaly'] = features['anomaly']
-    # print(f"Number of Anomalies Detected: {len(anomalies)}")
-    # print(anomalies)
+    print(f"Number of Anomalies Detected: {len(anomalies)}")
     # show_scatterplots(subset, "Gaussian Mixture Model", 2, axs)
     return anomalies
 
@@ -199,7 +192,7 @@ def anomaly_results(df):
     return overall_anomaly_df
 
 def show_overall_scatterplot(df, anomalies, field):
-    fig, ax = plt.subplots(figsize=(4,4))
+    fig, ax = plt.subplots(figsize=(2,2))
     sns.scatterplot(x='Price', y='Quantity', hue=field,
                     data=df, palette='Set2', legend=False)
     sns.scatterplot(x='Price', y='Quantity', data=anomalies,
@@ -269,5 +262,3 @@ def main():
     print(overall_anomaly_results)
 
     return continuous_outlier_df, discrete_outlier_df, overall_anomaly_results
-
-# main()
