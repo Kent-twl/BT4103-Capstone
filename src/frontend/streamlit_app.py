@@ -1,7 +1,11 @@
 import streamlit as st
 import datetime
 
-st.set_page_config(page_title="My App", layout="wide")
+st.set_page_config(
+    page_title="My App", 
+    layout="wide", 
+    # initial_sidebar_state="collapsed"
+)
 
 SELECTIONS = [
     "Business Intelligence",

@@ -12,7 +12,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 FILE_PATH = 'data.xlsx'
 CONTINUOUS_COLUMNS = ['Quantity', 'Price', 'Value', 'DoneVolume', 'DoneValue']
-DISCRETE_COLUMNS = ['AccID', 'AccCode', 'SecID', 'SecCode', 'Exchange', 'Destination', 'OrderGiver', 'OrderTakerUserCode', 'OriginOfOrder']
+DISCRETE_COLUMNS = ['AccCode', 'BuySell', 'Side', 'OrderSide', 'SecCode', 'Exchange', 'Destination', 'Lifetime', 'OrderGiver', 'OrderTakerUserCode']
 PROPORTION = 0.01
 
 def load_csv(file_path):
@@ -48,7 +48,7 @@ def discrete_outliers_frequency(df, column, threshold_ratio):
     outlier_rows = df[df[column].isin(outliers.index)]
     return outliers, outlier_rows
 
-def discrete_outlier_analysis(df, columns, threshold_ratio=0.001):
+def discrete_outlier_analysis(df, columns, threshold_ratio=0.0005):
     outlier_dict = {}
     new_columns = df.columns.tolist()
     new_columns.append('Cause')
@@ -198,13 +198,14 @@ def anomaly_results(df):
     overall_anomaly_df = get_common_anomalies(df.copy(), if_results, ocsvm_results, gmm_results)
     return overall_anomaly_df
 
-def show_overall_scatterplot(df, anomalies):
-    fig, ax = plt.subplots()
-    sns.scatterplot(x='Price', y='Quantity', hue='SecCode',
+def show_overall_scatterplot(df, anomalies, field):
+    fig, ax = plt.subplots(figsize=(4,4))
+    sns.scatterplot(x='Price', y='Quantity', hue=field,
                     data=df, palette='Set2', legend=False)
     sns.scatterplot(x='Price', y='Quantity', data=anomalies,
         color='red', marker='X', s=100, label='Anomalies')
     # ax.set_title('Anomaly Detection in Provided Data')
+    plt.title("Anomales Detected in Provided Data")
     ax.set_xlabel('Price')
     ax.set_ylabel('Quantity')
     return fig

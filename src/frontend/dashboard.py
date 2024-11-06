@@ -1,34 +1,77 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
+from datetime import date
+from datetime import datetime
+from datetime import time
 import hashlib
 import os
-import sys
+import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import streamlit as st
+import sys
 import anomaly
 
 ROOT_DIR = os.path.join(os.path.dirname(__file__), "../../")
 sys.path.append(ROOT_DIR)
-from src.llm.utils.fig_description_generator import fig_description_generator
+# from src.llm.utils.fig_description_generator import fig_description_generator
 #functional import
 from src.functions.asic_functions import *
 
+# @st.cache_data
+# def anom_results():
+#     anomaly_df = anomaly.load_excel('data.xlsx')
+#     continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
+#     anomalies = anomaly.anomaly_results(anomaly_df.copy())
+#     return anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies
+
+# anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies = anom_results()
+
+
 @st.cache_data  # Cache the data loading so that every time the filter changes, data won't be loaded again
 def load_data(file_path="data.xlsx"):
-    df = pd.read_excel(file_path)
-    df.insert(0, "CumulativeNumberOfOrders", range(1, len(df) + 1))
-    df["Value"] = df["Value"] * df["ValueMultiplier"]
-    df["Price"] = df["Price"] * df["PriceMultiplier"]
-    df["CumulativeValue"] = df["Value"].cumsum()
-    df["CumulativeDoneVolume"] = df["DoneVolume"].cumsum()
-    df["OriginOfOrder"] = df["OriginOfOrder"].astype(str)
-    #Threshold for Execution Venue Classification
+    df = pd.read_excel(file_path, sheet_name="data")
+    df["Value"] *= df["ValueMultiplier"]
+    df["Price"] *= df["PriceMultiplier"]
+
+    def add_cumulative_columns(df, date_col, columns):
+        df = df.sort_values(by=date_col, ascending=True)
+        df.insert(0, f"{date_col}_CumulativeNumberOfOrders", range(1, len(df) + 1))
+        for column in columns:
+            df[f"{date_col}_Cumulative{column}"] = df[column].cumsum()
+        return df
+
+    columns = ["Quantity", "Value", "DoneVolume", "DoneValue"]
+    df = add_cumulative_columns(df, "UpdateDate", columns)
+    df = add_cumulative_columns(df, "CreateDate", columns)
     df["ExecutionVenueCategory"] = df["ExecutionVenue"].apply(classify_execution_venue)
-    return df
+    return df["AccCode"].unique(), df["Currency"].unique(), df["Exchange"].unique(), df
 
-df = load_data()
 
+def filter_dataframe(df, column, options):
+    return df[df[column].isin(options)]
+
+
+# Load Data
+list_of_traders, list_of_currencies, list_of_exchanges, df = load_data()
+
+# Filter by Date
+df = df[df["CreateDate"].dt.date == st.session_state.date]
+
+# Sidebar Global Filters
 enable_automated_report = st.sidebar.checkbox("Enable Automated Report?", value=True)
+traders = st.sidebar.multiselect(
+    label="Filter for Trader", options=list_of_traders, default=list_of_traders
+)
+df = filter_dataframe(df, "AccCode", traders)
+exchanges = st.sidebar.multiselect(
+    label="Filter for Exchange", options=list_of_exchanges, default=list_of_exchanges
+)
+df = filter_dataframe(df, "Exchange", exchanges)
+currencies = st.sidebar.multiselect(
+    label="Filter for Currency", options=list_of_currencies, default=list_of_currencies
+)
+df = filter_dataframe(df, "Currency", currencies)
+
 
 def generate_description(fig, dash_type="bi", chart_type="line", vars=[]):
     # Generate text in the LLM based on fig
@@ -37,26 +80,409 @@ def generate_description(fig, dash_type="bi", chart_type="line", vars=[]):
     # Return the text
     return ret_output
 
+
+# Dummy function for generating_automated_report
+def generate_automated_report(fig):
+    return "automated reported to be here"
+
+
 def create_business_intelligence_dashboard():
-    pass
+    # ============================================================
+    # Section: Metrics Container
+    # ============================================================
+    metrics_container = st.container(border=True)
+    (
+        metrics_container_col1,
+        metrics_container_col2,
+        metrics_container_col3,
+        metrics_container_col4,
+        metrics_container_col5,
+    ) = metrics_container.columns(5)
+    metrics_container_col1.metric("Total Number of Traders", len(df["AccCode"].unique()))
+    metrics_container_col2.metric(
+        "Total Number of Distinct Secruity Codes Traded", len(df["SecCode"].unique())
+    )
+    metrics_container_col3.metric(
+        "Total Number of Orders", f"{round((df.shape[0] + 1) / 1000, 2)}K"
+    )
+    metrics_container_col4.metric(
+        "Total DoneVolume of Orders", f"{round(df['DoneVolume'].sum() / 1_000_000, 2)}M"
+    )
+    metrics_container_col5.metric(
+        "Total DoneValue of Orders", f"{round(df['DoneValue'].sum()/ 1_000_000, 2)}M"
+    )
+
+    # ============================================================
+    # Section: Box Plot and Pie Chart
+    # ============================================================
+    def create_box_plot_for_each_security(
+        parent_container,
+        key,
+        variable_options=[
+            "Price",
+            "DoneVolume",
+            "DoneValue",
+            "Quantity",
+            "Value",
+        ],
+        variable_index=0,
+    ):
+        child_container = parent_container.container(border=True)
+        variable = child_container.selectbox(
+            label="Variable",
+            options=variable_options,
+            index=variable_index,
+            key=key + "boxplot_variable",
+            label_visibility="collapsed",
+        )
+        # Filter df for the top 5 security codes
+        top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
+        fig = make_subplots(rows=1, cols=len(top5_sec_code))
+        for i, sec in enumerate(top5_sec_code, start=1):
+            fig.add_trace(
+                go.Box(y=df[df["SecCode"] == sec][variable], name=sec), row=1, col=i
+            )
+        fig.update_layout(
+            title=f"Box Plots of {variable} by Top 5 SecCode",
+            height=180,
+            margin=dict(t=40, b=0),
+            showlegend=False,
+        )
+        child_container.plotly_chart(fig, key=key + "boxplot")
+        if enable_automated_report:
+            expander = child_container.expander("View automated report")
+            expander.write(generate_automated_report(fig))
+
+
+    def create_pie_chart_for_each_security(
+        parent_container,
+        key,
+        variable_options=[
+            "BuySell",
+            "OrderSide",
+            # "PriceInstruction",
+            "Lifetime",
+            "ExecutionTime",
+        ],
+        variable_index=0,
+    ):
+        child_container = parent_container.container(border=True)
+        variable = child_container.selectbox(
+            label="Variable",
+            options=variable_options,
+            index=variable_index,
+            key=key + "boxplot_variable",
+            label_visibility="collapsed",
+        )
+        top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
+        specs = [[{"type": "domain"} for i in top5_sec_code]]
+        fig = make_subplots(rows=1, cols=len(top5_sec_code), specs=specs)
+        annotations = []
+        for i, sec in enumerate(top5_sec_code, start=1):
+            value_counts = df[df["SecCode"] == sec][variable].value_counts()
+            fig.add_trace(
+                go.Pie(labels=value_counts.index, values=value_counts, name=sec),
+                row=1,
+                col=i,
+            )
+            annotations.append(
+                dict(
+                    text=sec,
+                    x=sum(fig.get_subplot(1, i).x) / 2,
+                    y=0.5,
+                    font_size=15,
+                    showarrow=False,
+                    xanchor="center",
+                )
+            )
+        fig.update_traces(hole=0.4, hoverinfo="label+percent+name")
+        fig.update_layout(
+            title=f"Pie Chart of {variable} by Top 5 SecCode",
+            height=180,
+            margin=dict(t=40, b=0),
+            annotations=annotations,
+        )
+        child_container.plotly_chart(fig, key=key + "boxplot")
+        if enable_automated_report:
+            expander = child_container.expander("View automated report")
+            expander.write(generate_automated_report(fig))
+
+    first_row = st.container()
+    first_row_col1, first_row_col2 = first_row.columns([40, 60])
+    create_box_plot_for_each_security(parent_container=first_row_col1, key="4")
+    create_pie_chart_for_each_security(parent_container=first_row_col2, key="5")
+
+    # ============================================================
+    # Section: Box Plot and Pie Chart
+    # ============================================================
+    def create_pie_chart(parent_container, key):
+        child_container = parent_container.container(border=True)
+        variable = child_container.selectbox(
+            label="Variable",
+            options=[
+                "Lifetime",
+                # "PriceInstruction",
+                "BuySell",
+                "OrderSide",
+                "Exchange",
+                "Destination",
+                "Currency",
+                "OrderType",
+                "ExecutionTime",
+            ],
+            index=0,
+            key=key + "pie_variable",
+            label_visibility="collapsed",
+        )
+        value_counts = df[variable].value_counts()
+        fig = px.pie(values=value_counts.values, names=value_counts.index).update_layout(
+            title=f"Distribution of {variable}",
+            height=200,
+            margin=dict(t=30, b=0, l=0, r=0),
+        )
+        child_container.plotly_chart(fig, key=key + "pie")
+        if enable_automated_report:
+            expander = child_container.expander("View automated report")
+            expander.write(generate_automated_report(fig))
+
+
+    def create_bar_chart(parent_container, key):
+        child_container = parent_container.container(border=True)
+        variable = child_container.selectbox(
+            label="Variable",
+            options=[
+                "PriceInstruction",
+                "Lifetime",
+                "BuySell",
+                "OrderSide",
+                "Exchange",
+                "Destination",
+                "Currency",
+                "OrderType",
+                "ExecutionTime",
+            ],
+            index=0,
+            key=key + "bar_var",
+            label_visibility="collapsed",
+        )
+        value_counts = df[variable].value_counts()
+        percentages = (value_counts / value_counts.sum() * 100).round(
+            2
+        )  # Calculate percentages
+        fig = px.bar(
+            x=value_counts.index,
+            y=value_counts.values,
+            labels={"y": "Count"},
+            color_discrete_sequence=["peachpuff"],
+        )
+        for i, count in enumerate(value_counts.values):
+            fig.add_annotation(
+                x=value_counts.index[i],
+                y=count,
+                text=f"{percentages[i]}%",
+                showarrow=False,
+                font=dict(size=12),
+                yshift=10,  # Adjusts the position of the text
+            )
+        fig.update_layout(
+            title=f"Distribution of {variable}",
+            height=200,
+            margin=dict(t=30, b=0, l=0, r=0),
+            xaxis_title=None,
+        )
+        child_container.plotly_chart(fig, key=key + "bar")
+        if enable_automated_report:
+            expander = child_container.expander("View automated report")
+            expander.write(generate_automated_report(fig))
+
+
+    def create_histogram(
+        parent_container,
+        key,
+        variable_options=[
+            "DoneVolume",
+            "DoneValue",
+            "Quantity",
+            "Value",
+        ],
+        variable_index=0,
+    ):
+        child_container = parent_container.container(border=True)
+        variable = child_container.selectbox(
+            label="Variable",
+            options=variable_options,
+            index=variable_index,
+            key=key + "histogram_variable",
+            label_visibility="collapsed",
+        )
+        fig = px.histogram(
+            df, variable, color_discrete_sequence=["palegreen"]
+        ).update_layout(
+            title=f"Distribution of {variable}",
+            height=200,
+            margin=dict(t=30, b=0, l=0, r=0),
+        )
+        child_container.plotly_chart(fig, key=key + "histogram")
+        if enable_automated_report:
+            expander = child_container.expander("View automated report")
+            expander.write(generate_automated_report(fig))
+
+    second_row = st.container()
+    second_row_col1, second_row_col2, second_row_col3 = second_row.columns([20, 40, 40])
+    create_pie_chart(parent_container=second_row_col1, key="6")
+    create_bar_chart(parent_container=second_row_col2, key="7")
+    create_histogram(parent_container=second_row_col3, key="8")
+
+    # ============================================================
+    # Section: Line Chart and Sankey Diagram
+    # ============================================================
+    def create_line_chart(
+        parent_container,
+        key,
+        x_axis_options=["CreateDate", "UpdateDate"],
+        x_axis_index=0,
+        y_axis_options=[
+            "CumulativeNumberOfOrders",
+            "Value",
+            "DoneVolume",
+            "CumulativeDoneValue",
+            "CumulativeQuantity",
+        ],
+        y_axis_index=0,
+    ):
+        child_container = parent_container.container(border=True)
+        col1, col2 = child_container.columns(2)
+        y_axis = col1.selectbox(
+            label="Y axis variable",
+            options=y_axis_options,
+            index=y_axis_index,
+            key=key + "line_y_axis",
+            label_visibility="collapsed",
+        )
+        x_axis = col2.selectbox(
+            label="X axis variable",
+            options=x_axis_options,
+            index=x_axis_index,
+            key=key + "line_x_axis",
+            label_visibility="collapsed",
+        )
+        fig = px.line(df, x=x_axis, y=x_axis + "_" + y_axis)
+        fig = fig.update_layout(height=280, margin=dict(l=0, r=0, t=30, b=0))
+        child_container.plotly_chart(fig, key=key + "line")
+        if enable_automated_report:
+            expander = child_container.expander("View automated report")
+            expander.write(generate_automated_report(fig))
+
+
+    def create_sankey(
+        parent_container,
+        key,
+        src_options=["SecCode", "Exchange"],
+        src_index=0,
+        target_options=["BuySell", "Destination"],
+        target_index=0,
+    ):
+        child_container = parent_container.container(border=True)
+        col1, col2 = child_container.columns(2)
+        source = col1.selectbox(
+            label="Source",
+            options=src_options,
+            index=src_index,
+            key=key + "sankey_source",
+            label_visibility="collapsed",
+        )
+
+        target = col2.selectbox(
+            label="Target",
+            options=target_options,
+            index=target_index,
+            key=key + "sankey_target",
+            label_visibility="collapsed",
+        )
+        if source == "SecCode":
+            top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
+            df_filtered = df[df["SecCode"].isin(top5_sec_code)]
+        else:
+            df_filtered = df
+        agg_df = df_filtered.groupby([source, target]).size().reset_index(name="Count")
+        # Prepare data for Sankey diagram - make target labels distinct by adding suffix
+        source_labels = list(agg_df[source].unique())
+        target_labels = [f"{label} (dest)" for label in df_filtered[target].unique()]
+        labels = source_labels + target_labels
+        # Create source index mapping
+        source_index = {code: idx for idx, code in enumerate(source_labels)}
+        # Initialize lists for Sankey data
+        sources = []
+        targets = []
+        values = []
+        # Fill source, target, and values
+        for _, row in agg_df.iterrows():
+            sources.append(source_index[row[source]])
+            # Find the target index in the modified target labels
+            target_label = f"{row[target]} (dest)"
+            targets.append(labels.index(target_label))
+            values.append(row["Count"])
+        fig = go.Figure(
+            go.Sankey(
+                node=dict(
+                    pad=15, thickness=20, line=dict(color="black", width=0.5), label=labels
+                ),
+                link=dict(source=sources, target=targets, value=values),
+            )
+        )
+        fig = fig.update_layout(height=280, margin=dict(l=0, r=0, t=30, b=0))
+        # fig.update_layout()
+        child_container.plotly_chart(fig, key=key + "sankey")
+
+        # Optional automated report section
+        if "enable_automated_report" in globals() and enable_automated_report:
+            expander = child_container.expander("View automated report")
+            expander.write(generate_automated_report(fig))
+
+    third_row = st.container()
+    third_row_col1, third_row_col2, third_row_col3 = third_row.columns(3)
+    create_line_chart(
+        parent_container=third_row_col1,
+        key="1",
+    )
+    create_line_chart(
+        parent_container=third_row_col2,
+        key="2",
+        y_axis_index=1,
+    )
+    create_sankey(parent_container=third_row_col3, key="3")
+
 
 def create_anomaly_detection_dashboard():
-    anomaly_df = anomaly.load_excel('data.xlsx')
-    continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
-    anomalies = anomaly.anomaly_results(anomaly_df.copy())
     st.header("Anomaly Detection Dashboard")
     with st.container(border=True):
         st.subheader("Outlier Analysis Results")
-        st.write("Continuous Outliers")
-        st.table(continuous_outlier_df)
-        st.divider()
-        st.write("Discrete Outliers")
-        st.table(discrete_outlier_df)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("Continuous Outliers")
+            st.divider()
+            if not continuous_outlier_df.empty:
+                st.dataframe(continuous_outlier_df, height = 300)
+            else:
+                st.write("There are no continuous outliers identified.")
+        with col2:
+            st.write("Discrete Outliers")
+            st.divider()
+            if not discrete_outlier_df.empty:
+                st.dataframe(discrete_outlier_df, height = 300)
+            else:
+                st.write("There are no discrete outliers identified.")
     with st.container(border=True):
         st.subheader("Anomaly Detection Results")
-        st.write("Scatterplot of Price vs Quantity, with Anomalies marked out")
-        fig = anomaly.show_overall_scatterplot(anomaly_df, anomalies)
-        st.pyplot(fig)
+        st.write("Please select the field you would like to see the data coloured by.")
+        scatter_options = ['SecCode', 'AccCode', 'OrderSide', 'OrderGiver', 'OriginOfOrder', 'Exchange', 'Destination']
+        selected_field = st.selectbox('Field: ', scatter_options)
+        if selected_field:
+            fig = anomaly.show_overall_scatterplot(anomaly_df, anomalies, selected_field)
+            st.pyplot(fig)
+        else:
+            fig = anomaly.show_overall_scatterplot(anomaly_df, anomalies, 'SecCode')
+            st.pyplot(fig)
         st.divider()
         st.write("Anomalous Trades")
         st.table(anomalies)
@@ -66,7 +492,7 @@ def create_asic_reporting_dashboard():
     st.title("ASIC Reporting Dashboard")
     chart_type = st.selectbox("Choose Chart type", options=["User-specified Dashboard", "Clause-specific Dashboard"])
 
-    #Workflow fo User-tailored Dashboard
+    #Workflow for User-tailored Dashboard
     if chart_type == "User-specified Dashboard":
         st.write("Please select the relevant fields you would like to see for ASIC Reporting.")
 
@@ -108,7 +534,6 @@ def create_asic_reporting_dashboard():
                     st.dataframe(pie_chart_data)
 
         # Generate bar charts for the selected fields
-    # Generate bar charts for the selected fields
         if selected_bar_fields:
             for field in selected_bar_fields:
                 st.subheader(f"{field}")
@@ -171,34 +596,80 @@ def create_asic_reporting_dashboard():
             else:
                 filtered_df = df
             
-            # Group by TimeInForce and AccCode to show cumulative number of orders
-            area_data = filtered_df.groupby(['TimeInForce', 'AccCode'])['CumulativeNumberOfOrders'].sum().reset_index()
-            area_fig = px.area(area_data, x="TimeInForce", y="CumulativeNumberOfOrders", color="AccCode",
-                            title=f"{selected_chart} - {selected_acccode if selected_acccode != 'All' else 'All Accounts'}",
-                            labels={"TimeInForce": "Time In Force", "CumulativeNumberOfOrders": "Cumulative Number of Orders"})
+            # Calculate ExecutionTime in minutes
+            filtered_df['ExecutionTime'] = round((filtered_df['UpdateDate'] - filtered_df['CreateDate']).dt.total_seconds() / 60)
+            filtered_df['CumulativeNumberOfOrders'] = filtered_df['CreateDate_CumulativeNumberOfOrders']
+
+            # Calculate the count and percentage of orders filled immediately (ExecutionTime = 0)
+            immediate_filled_orders = filtered_df[filtered_df['ExecutionTime'] == 0]['CumulativeNumberOfOrders'].sum()
+            total_orders = filtered_df['CumulativeNumberOfOrders'].sum()
+            immediate_filled_percentage = (immediate_filled_orders / total_orders) * 100 if total_orders > 0 else 0
+
+            # Display the metric with both the percentage and raw count
+            st.markdown("""
+                <div style="text-align: center; padding: 10px; border-radius: 8px; background-color: #000000; color: white;">
+                    <h3>Orders Filled Immediately</h3>
+                    <h1 style="font-size: 40px;">{:.2f}%</h1>
+                    <p style="font-size: 18px;">({:,} out of {:,} orders)</p>
+                </div>
+            """.format(immediate_filled_percentage, immediate_filled_orders, total_orders), unsafe_allow_html=True)
+
+            # Filter data for orders not filled immediately (ExecutionTime > 0)
+            not_filled_immediately_df = filtered_df[filtered_df['ExecutionTime'] > 0]
+
+            # Group by ExecutionTime and AccCode for the line graph
+            area_data = not_filled_immediately_df.groupby(['ExecutionTime', 'AccCode'])['CumulativeNumberOfOrders'].sum().reset_index()
+
+            # Create the line graph for orders not filled immediately
+            area_fig = px.area(
+                area_data, 
+                x="ExecutionTime", 
+                y="CumulativeNumberOfOrders", 
+                color="AccCode",
+                title=f"{selected_chart} - {selected_acccode if selected_acccode != 'All' else 'All Accounts'}",
+                labels={"ExecutionTime": "Execution Time (minutes)", "CumulativeNumberOfOrders": "Cumulative Number of Orders"}
+            )
+
+            # Display the line graph in Streamlit
             st.plotly_chart(area_fig)
             
             # Show additional details if a specific AccCode is selected
             if selected_acccode != "All":
-                st.markdown(f"### Detailed View for Account Code: {selected_acccode}")
-                
                 # Display cumulative orders over time for the selected AccCode
                 cumulative_orders = filtered_df[['CreateDate', 'CumulativeNumberOfOrders']].drop_duplicates().sort_values(by='CreateDate')
-                cumulative_orders_fig = px.line(cumulative_orders, x="CreateDate", y="CumulativeNumberOfOrders",
+                cumulative_orders_fig = px.bar(cumulative_orders, x="CreateDate", y="CumulativeNumberOfOrders",
                                                 title="Cumulative Number of Orders Over Time",
-                                                labels={"CreateDate": "Date", "CumulativeNumberOfOrders": "Cumulative Number of Orders"})
+                                                labels={"CreateDate": "Timestamp", "CumulativeNumberOfOrders": " Number of Orders"})
                 st.plotly_chart(cumulative_orders_fig)
                 
-                # Display a breakdown of orders by TimeInForce within this specific AccCode
-                time_in_force_data = filtered_df.groupby('TimeInForce')['CumulativeNumberOfOrders'].sum().reset_index()
-                time_in_force_fig = px.bar(time_in_force_data, x="TimeInForce", y="CumulativeNumberOfOrders",
-                                        title="Number of Orders by Time Taken for Execution",
-                                        labels={"TimeInForce": "Time In Force", "CumulativeNumberOfOrders": "Number of Orders"})
-                st.plotly_chart(time_in_force_fig)
-                
+                # # Calculate the count and percentage of orders filled immediately
+                # immediate_fill_count = filtered_df[filtered_df['ExecutionTime'] == 0]['CumulativeNumberOfOrders'].sum()
+                # total_order_count = filtered_df['CumulativeNumberOfOrders'].sum()
+                # immediate_fill_percentage = (immediate_fill_count / total_order_count) * 100 if total_order_count > 0 else 0
+
+                # # Display the metrics with custom styling
+                # st.markdown("""
+                #     <div style="text-align: center; padding: 10px; border-radius: 8px; background-color: #4CAF50; color: white;">
+                #         <h3>Orders Filled Immediately</h3>
+                #         <h1 style="font-size: 40px;">{:.2f}%</h1>
+                #         <p style="font-size: 18px;">({:,} out of {:,} orders)</p>
+                #     </div>
+                # """.format(immediate_fill_percentage, immediate_fill_count, total_order_count), unsafe_allow_html=True)
+
+                # # Display a breakdown of orders by ExecutionTime within this specific AccCode
+                # execution_time_data = filtered_df.groupby('ExecutionTime')['CumulativeNumberOfOrders'].sum().reset_index()
+                # execution_time_fig = px.bar(
+                #     execution_time_data, 
+                #     x="ExecutionTime", 
+                #     y="CumulativeNumberOfOrders",
+                #     title="Number of Orders by Time Taken for Execution",
+                #     labels={"ExecutionTime": "Execution Time", "CumulativeNumberOfOrders": "Number of Orders"}
+                # )
+                # st.plotly_chart(execution_time_fig)
+
                 # Show additional data details in a table
                 st.write("Additional data details:")
-                st.dataframe(filtered_df[['AccCode','CreateDate', 'OrderNo', 'OrderSide', 'OrderType', 'TimeInForce',  'DoneVolume', 'Price', 'Quantity', 'ExecutionVenue']])
+                st.dataframe(filtered_df[['AccCode', 'CreateDate', 'UpdateDate', 'OrderNo', 'OrderSide', 'OrderType', 'ExecutionTime', 'DoneVolume', 'Price', 'Quantity', 'ExecutionVenue']])
             
         elif selected_chart == "RG 265.12 (Supervision of Market Participants)":
             st.subheader(selected_chart)
@@ -215,8 +686,8 @@ def create_asic_reporting_dashboard():
             
             # Summary data for all AccCodes or filtered by selected AccCode
             summary_data = filtered_df.groupby('AccCode').agg({
-                'CumulativeDoneVolume': 'last',  # Assuming cumulative sum is already in `CumulativeDoneVolume`
-                'CumulativeValue': 'last'  # Assuming cumulative sum is in `CumulativeValue`
+                'DoneVolume': 'sum',  # sum DoneValue
+                'Value': 'sum'  # sum Value
             }).reset_index()
             summary_data.columns = ['AccCode', 'Total Done Volume', 'Total Cumulative Value']
             st.dataframe(summary_data)
@@ -226,17 +697,17 @@ def create_asic_reporting_dashboard():
                 st.markdown(f"### Detailed View for Account Code: {selected_acccode}")
                 
                 # Display cumulative done volume over time for the selected AccCode
-                cumulative_done_volume = filtered_df[['CreateDate', 'CumulativeDoneVolume']].drop_duplicates().sort_values(by='CreateDate')
-                done_volume_fig = px.line(cumulative_done_volume, x="CreateDate", y="CumulativeDoneVolume",
-                                        title="Cumulative Done Volume Over Time",
-                                        labels={"CreateDate": "Date", "CumulativeDoneVolume": "Cumulative Done Volume"})
+                cumulative_done_volume = filtered_df[['CreateDate', 'DoneVolume']].drop_duplicates().sort_values(by='CreateDate')
+                done_volume_fig = px.line(cumulative_done_volume, x="CreateDate", y="DoneVolume",
+                                        title="Done Volume Over Time",
+                                        labels={"CreateDate": "Date", "DoneVolume": "Done Volume"})
                 st.plotly_chart(done_volume_fig)
                 
                 # Display cumulative value over time for the selected AccCode
-                cumulative_value = filtered_df[['CreateDate', 'CumulativeValue']].drop_duplicates().sort_values(by='CreateDate')
-                value_fig = px.line(cumulative_value, x="CreateDate", y="CumulativeValue",
-                                    title="Cumulative Order Value Over Time",
-                                    labels={"CreateDate": "Date", "CumulativeValue": "Cumulative Value"})
+                cumulative_value = filtered_df[['CreateDate', 'Value']].drop_duplicates().sort_values(by='CreateDate')
+                value_fig = px.line(cumulative_value, x="CreateDate", y="Value",
+                                    title="Order Value Over Time",
+                                    labels={"CreateDate": "Date", "Value": "Order Value"})
                 st.plotly_chart(value_fig)
                 
                 # Display a breakdown of average done volume per order type within this specific AccCode
@@ -337,9 +808,7 @@ def create_asic_reporting_dashboard():
                 st.write("Additional data details:")
                 st.dataframe(filtered_df[['AccCode', 'OrderNo','OrderSide', 'OrderType', 'DoneVolume', 'Price', 'Quantity', 'ExecutionVenue']])
 
-# Example call to the function (you can uncomment this for testing)
-# create_asic_reporting_dashboard()
-
+# Call to the function (you can uncomment this for testing)
 if "Business Intelligence" in st.session_state.selections:
     create_business_intelligence_dashboard()
 
@@ -349,141 +818,11 @@ if "Anomaly Detection" in st.session_state.selections:
 if "ASIC Reporting" in st.session_state.selections:
     create_asic_reporting_dashboard()
 
-def create_line_chart(
-    parent_container,
-    key,
-    x_axis_options=["CreateDate", "DeleteDate"],
-    x_axis_index=0,
-    y_axis_options=["CumulativeNumberOfOrders", "Value", "Quantity"],
-    y_axis_index=0,
-):
-    child_container = parent_container.container()
-    y_axis = child_container.selectbox(
-        label="Y axis variable",
-        options=y_axis_options,
-        index=y_axis_index,
-        key=key + "line_y_axis",
-        label_visibility="collapsed",
-    )
-    x_axis = child_container.selectbox(
-        label="X axis variable",
-        options=x_axis_options,
-        index=x_axis_index,
-        key=key + "line_x_axis",
-        label_visibility="collapsed",
-    )
-    fig = px.line(df, x=x_axis, y=y_axis).update_layout(height=250)
-    child_container.plotly_chart(fig, key=key + "line")
-    if enable_automated_report:
-        expander = child_container.expander("View automated report")
-        expander.write(generate_description(fig))
 
-def create_pie_chart(parent_container, key):
-    child_container = parent_container.container()
-    variable = child_container.selectbox(
-        label="Variable",
-        options=["OrderCapacity", "Exchange"],
-        index=0,
-        key=key + "pie_var",
-        label_visibility="collapsed",
-    )
-    fig = px.pie(df, values="Price", names=variable).update_layout(height=250)
-    child_container.plotly_chart(fig, key=key + "pie")
-    if enable_automated_report:
-        expander = child_container.expander("View automated report")
-        expander.write(generate_description(fig))
 
-def create_sankey(parent_container, key):
-    child_container = parent_container.container()
-    source = child_container.selectbox(
-        label="Source",
-        options=["SecCode"],
-        index=0,
-        key=key + "sankey_source",
-        label_visibility="collapsed",
-    )
-    target = child_container.selectbox(
-        label="Target",
-        options=["BuySell"],
-        index=0,
-        key=key + "sankey_target",
-        label_visibility="collapsed",
-    )
-    agg_df = df.groupby(['Exchange', 'BuySell']).size().reset_index(name='Count')
-
-    # Prepare data for Sankey diagram
-    labels = agg_df['Exchange'].unique().tolist() + ['B', 'S']
-    source = []
-    target = []
-    values = []
-
-    # Map SecCode to their respective indices
-    sec_code_index = {code: idx for idx, code in enumerate(agg_df['Exchange'].unique())}
-
-    # Fill source, target, and values
-    for _, row in agg_df.iterrows():
-        source.append(sec_code_index[row['Exchange']])  # Index of SecCode
-        target.append(labels.index(row['BuySell']))     # Index of BuySell
-        values.append(row['Count'])
-
-    # Create the Sankey diagram
-    fig = go.Figure(go.Sankey(
-        node=dict(
-            pad=15,
-            thickness=20,
-            line=dict(color='black', width=0.5),
-            label=labels
-        ),
-        link=dict(
-            source=source,
-            target=target,
-            value=values
-        )
-    ))
-    child_container.plotly_chart(fig, key=key + "pie")
-    if enable_automated_report:
-        expander = child_container.expander("View automated report")
-        expander.write(generate_description(fig))
-
-# Create the BI Dashboard
-st.subheader("Business Intelligence Dashboard")
-metrics_container = st.container(border=True)
-metrics_container_col1, metrics_container_col2, metrics_container_col3, metrics_container_col4, metrics_container_col5 = metrics_container.columns(5)
-metrics_container_col1.metric("Total Number of Traders", len(df["AccCode"].unique()))
-metrics_container_col2.metric("Number of Secruity Codes Traded", len(df["SecCode"].unique()))
-metrics_container_col3.metric("Total Number of Orders", f"{round((df.shape[0] + 1) / 1000, 2)}K")
-metrics_container_col4.metric("Total Volume of Orders", f"{round(df['DoneVolume'].sum() / 1_000_000, 2)}M")
-metrics_container_col5.metric("Total Value of Orders", f"{round(df['Value'].sum()/ 1_000_000, 2)}M")
-
-st_col1, st_col2 = st.columns(spec=[2, 1], vertical_alignment="top")
-col1_container = st_col1.container(border=True)
-col2_container = st_col2.container(border=True)
-col1_container_col1, col1_container_col2 = col1_container.columns(2)
-create_line_chart(
-    parent_container=col1_container_col1,
-    key="1",
-    x_axis_options=["CreateDate", "DeleteDate"],
-    y_axis_options=[
-        "CumulativeNumberOfOrders",
-        "CumulativeValue",
-        "CumulativeDoneVolume",
-    ],
-)
-create_line_chart(
-    parent_container=col1_container_col2,
-    key="2",
-    x_axis_options=["CreateDate", "DeleteDate"],
-    y_axis_options=[
-        "CumulativeNumberOfOrders",
-        "CumulativeValue",
-        "CumulativeDoneVolume",
-    ],
-    y_axis_index=1,
-)
-create_sankey(
-    parent_container=col2_container, 
-    key="3"
-)
+# ============================================================
+# Section: Letting users choose the chart type (Deprecated)
+# ============================================================
 
 # chart_type_1 = container1.selectbox(label="Chart type", options=["Line Chart", "Pie Chart"], index=0, label_visibility="collapsed")
 # chart_type_2 = container2.selectbox(label="Chart type", options=["Line Chart", "Pie Chart"], index=1, label_visibility="collapsed")
@@ -545,3 +884,84 @@ create_sankey(
 
 # outer_columns_array = columns_array_creator(unique_count, 2)
 # st.write(outer_columns_array)
+
+
+# def create_sankey(
+#     parent_container,
+#     key,
+#     src_options=["SecCode", "Exchange"],
+#     src_index=0,
+#     target_options=["BuySell", "Destination"],
+#     target_index=0,
+# ):
+#     # Create child container
+#     child_container = parent_container.container()
+
+#     # Create selection boxes
+#     source = child_container.selectbox(
+#         label="Source",
+#         options=src_options,
+#         index=src_index,
+#         key=key + "sankey_source",
+#         label_visibility="collapsed",
+#     )
+
+#     target = child_container.selectbox(
+#         label="Target",
+#         options=target_options,
+#         index=target_index,
+#         key=key + "sankey_target",
+#         label_visibility="collapsed",
+#     )
+
+#     # Filter data based on source selection
+#     if source == "SecCode":
+#         top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
+#         df_filtered = df[df["SecCode"].isin(top5_sec_code)]
+#     else:
+#         df_filtered = df
+
+#     # Create aggregation based on selected source and target
+#     agg_df = df_filtered.groupby([source, target]).size().reset_index(name="Count")
+
+#     # Prepare data for Sankey diagram
+#     labels = list(agg_df[source].unique()) + list(df_filtered[target].unique())
+
+#     # Create source index mapping
+#     source_index = {code: idx for idx, code in enumerate(agg_df[source].unique())}
+
+#     # Initialize lists for Sankey data
+#     sources = []
+#     targets = []
+#     values = []
+
+#     # Fill source, target, and values
+#     for _, row in agg_df.iterrows():
+#         sources.append(source_index[row[source]])
+#         targets.append(labels.index(row[target]))
+#         values.append(row["Count"])
+
+#     # Create Sankey diagram
+#     fig = go.Figure(
+#         go.Sankey(
+#             node=dict(
+#                 pad=15,
+#                 thickness=20,
+#                 line=dict(color="black", width=0.5),
+#                 label=labels
+#             ),
+#             link=dict(
+#                 source=sources,
+#                 target=targets,
+#                 value=values
+#             )
+#         )
+#     )
+
+#     # Display the chart
+#     child_container.plotly_chart(fig, key=key + "sankey")
+
+#     # Optional automated report section
+#     if 'enable_automated_report' in globals() and enable_automated_report:
+#         expander = child_container.expander("View automated report")
+#         expander.write(generate_automated_report(fig))
