@@ -10,11 +10,12 @@ from dotenv import load_dotenv
 import plotly
 import plotly.express as px # Ensure kaleido version is 0.1.0.post1
 import base64
+import pandas as pd
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from llm.prompts import dashboard_prompts as prompts
+from llm.prompts import dashboard_prompts, variable_descriptions
 
 ## Add directories to path
 sys.path.append(os.path.abspath(os.path.join(os.getcwd())))
@@ -25,7 +26,8 @@ assert os.environ['LANGCHAIN_API_KEY'], "Please set the LANGCHAIN_API_KEY enviro
 assert os.environ['OPENAI_API_KEY'], "Please set the OPENAI_API_KEY environment variable"
 
 
-def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", chart_type="line", vars=[]):
+def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", chart_type="line", vars=[], additional_info=None):
+    ##TODO: Use multi-modal multi-agent graph
     ## Initialize LLM
     openai_llm = ChatOpenAI(model='gpt-4o-mini', api_key=os.environ['OPENAI_API_KEY'])
 
@@ -36,10 +38,20 @@ def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", cha
         return "Error generating image bytes: " + e
 
     ## Get necessary prompts
-    system_prompt = prompts.system_prompt
-    dash_prompt = prompts.bi_dash_prompt if dash_type == "bi" else \
-        prompts.asic_dash_prompt if dash_type == "asic" else prompts.anomaly_dash_prompt
-    vars_prompt = "" ##TODO: Fetch descriptions of the variables used in the chart
+    system_prompt = dashboard_prompts.system_prompt
+    dash_prompt = dashboard_prompts.anomaly_dash_prompt if dash_type == "anomaly" else \
+        dashboard_prompts.asic_dash_prompt if dash_type == "asic" else dashboard_prompts.bi_dash_prompt
+    ## For anomaly detection dashboard, format the prompt with the reasons for classification
+    if dash_type == "anomaly":
+        assert additional_info != None, \
+            "Please provide the description generator with the anomaly detection results for this dashboard."
+        assert isinstance(additional_info, pd.DataFrame), "additional_info must be a pandas DataFrame"
+        anomaly_results = additional_info.to_dict(orient="records")
+        dash_prompt = dash_prompt.format(anomalies_and_reasons=anomaly_results)
+    
+    vars_dict = variable_descriptions.variable_dict
+    relevant_vars = ", ".join([vars_dict[var] for var in vars if var in vars_dict])
+    vars_prompt = variable_descriptions.variable_prompt.format(variables=relevant_vars)
     messages = [
         SystemMessage(content=system_prompt),
         SystemMessage(content=dash_prompt),
@@ -53,9 +65,8 @@ def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", cha
             content=[
                 {
                     "type": "text", 
-                    "text": "I am an analyst looking at the chart. Provide a brief description of the chart for me."
+                    "text": f"I am an analyst looking at {chart_type} chart. Provide a brief description of the chart for me."
                 },
-                ##TODO: Add more prompts wrt chart content and variables
                 {
                     "type": "image_url",
                     "image_url": {

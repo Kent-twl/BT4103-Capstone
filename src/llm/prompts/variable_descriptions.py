@@ -1,4 +1,9 @@
 ## Descriptions of variables in the dataset
+variable_prompt = """
+    Here are brief explanations of the variables that you may encounter.
+    {variables}
+"""
+
 ##TODO: Split the prompt into variables for different contexts (BI, ASIC, Anomaly Detection) and exclude irrelevant variables
 variable_descriptions = """
 Instance: Terminal used to submit the order.
@@ -42,3 +47,10 @@ DirectedWholesale: Indicates whether the order was submitted by a wholesale clie
 ExecutionVenue: The venue (licensed market, crossing system, etc.) where the order was executed.
 ExecutionInstructionsRaw: Raw execution instructions.
 """
+
+## Dict mapping variable to its description
+variable_dict = {}
+for line in variable_descriptions.strip().split('\n'):
+    if line:
+        variable, description = line.split(': ', 1)
+        variable_dict[variable] = f"{variable}: {description}"
