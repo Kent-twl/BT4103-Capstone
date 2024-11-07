@@ -187,7 +187,7 @@ def create_multiagent_graph(main_system_message, db_path, llm, agents, with_memo
     )
 
     ## Define tool node
-    tools = sql_tools ## Full list of all tools needed by multi-agent network
+    tools = all_tools ## Full list of all tools needed by multi-agent network
     tool_node = ToolNode(tools)
 
     ## Create graph
