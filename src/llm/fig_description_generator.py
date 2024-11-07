@@ -26,7 +26,26 @@ assert os.environ['LANGCHAIN_API_KEY'], "Please set the LANGCHAIN_API_KEY enviro
 assert os.environ['OPENAI_API_KEY'], "Please set the OPENAI_API_KEY environment variable"
 
 
-def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", chart_type="line", vars=[], additional_info=None):
+def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", chart_type="line", date_range="today", vars=[], additional_info=None):
+    """
+    fig: plotly.graph_objs.Figure
+    The figure object for which a description is to be generated.
+
+    dash_type: str
+    The dashboard type, one of "bi", "asic", or "anomaly".
+
+    chart_type: str
+    The type of chart being described, eg. "line", "bar", "scatter", etc.
+
+    date_range: str
+    The date range for the data displayed in the chart, as a string.
+
+    vars: list
+    List of variables used in the chart.
+
+    additional_info: Any
+    Additional info to be included in the description, eg. for anomaly detection dashboards.
+    """
     ##TODO: Use multi-modal multi-agent graph
     ## Initialize LLM
     openai_llm = ChatOpenAI(model='gpt-4o-mini', api_key=os.environ['OPENAI_API_KEY'])
@@ -65,7 +84,10 @@ def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", cha
             content=[
                 {
                     "type": "text", 
-                    "text": f"I am an analyst looking at {chart_type} chart. Provide a brief description of the chart for me."
+                    "text": f"""
+                        I am an analyst looking at this {chart_type} chart displaying data from {date_range}. 
+                        Provide a brief description of the chart for me.
+                    """
                 },
                 {
                     "type": "image_url",
