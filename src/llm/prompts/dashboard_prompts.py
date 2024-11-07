@@ -8,11 +8,14 @@ You are tasked to write brief descriptions for each of the visualizations on the
 ## Prompts for dashboard type (BI, ASIC, anomaly)
 bi_dash_prompt = """
 This particular chart is part of a Business Intelligence dashboard.
-It is used by traders and analysts to make better decisions in the trading process.
+A trader / analyst uses this dashboard to make informed decisions. Help them understand the chart.
+What are some features they should pay attention to, and what insights can they gain from it?
+Please keep your response short and concise.
 """
 
+##TODO: Add info on clauses, etc
 asic_dash_prompt = """
-
+This particular chart is part of a regulatory reporting dashboard.
 """
 
 anomaly_dash_prompt = """
@@ -22,15 +25,6 @@ The chart is generated after running the order data through an anomaly detection
 Write a description for this chart, with reference to the following list of flagged orders and the respective reasons they were flagged:
 {anomalies_and_reasons}
 """
-
-## Prompts for chart type (line, bar, pie, etc.)
-line_chart_prompt = """
-The chart you need to annotate is a line graph. The axes are {x_axis} and {y_axis}.
-The lines are colour-coded according to this variable, if it is not null: {colour_code}.
-
-"""
-
-## Prompts for attributes used (time, security code, etc.)
 
 
 ## Output prompt

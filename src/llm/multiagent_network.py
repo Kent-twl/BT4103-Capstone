@@ -1,4 +1,4 @@
-## Chatbot to help users understand data better
+## Multi-agent network with multiple tool-calling agents
 
 ## Imports
 import os
@@ -13,19 +13,20 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../"))
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
-from multiagent_network_functions import *
+from llm.multiagent_network_functions import *
 
 load_dotenv()
 assert os.environ["LANGCHAIN_API_KEY"], "Please set the LANGCHAIN_API_KEY environment variable"
 assert os.environ["OPENAI_API_KEY"], "Please set the OPENAI_API_KEY environment variable"
 
 
-## Chatbot class
-class MultiAgentChatbot():
-    def __init__(self, db_path, llm="openai", with_memory=False):
+## Multi-agent network class
+class MultiAgentNetwork():
+    def __init__(self, main_system_message, db_path, llm="openai", agents=["sql", "yfinance"], with_memory=False):
         print("Initializing multi-agent chatbot...")
 
         self.db_path = db_path
+        self.agents = agents
         self.parser = StrOutputParser()
 
         if not os.path.exists(self.db_path):
@@ -33,7 +34,13 @@ class MultiAgentChatbot():
 
         openai_llm = ChatOpenAI(model="gpt-4o-mini", api_key=os.environ['OPENAI_API_KEY'])
         
-        self.graph, self.config = create_multiagent_graph(db_path=self.db_path, llm=openai_llm, with_memory=with_memory)
+        self.graph, self.config = create_multiagent_graph(
+            main_system_message=main_system_message, 
+            db_path=self.db_path, 
+            llm=openai_llm, 
+            agents=self.agents, 
+            with_memory=with_memory
+        )
 
     
     ## Calls the graph to generate a response
@@ -53,7 +60,7 @@ class MultiAgentChatbot():
     
 
     ## Streams the conversation with the agent
-    def stream(self, message):
+    def stream(self, message: str):
         try:
             if self.config:
                 events = self.graph.stream({"messages": [("user", message)]}, config=self.config, stream_mode="values")
@@ -64,3 +71,19 @@ class MultiAgentChatbot():
             print(f"Error: {e}")
             ret_stream = ["I'm sorry, the question seems to be out of my area of expertise. Let me know if you have any other questions."]
         return ret_stream
+    
+
+    ## Streams output with more info for debugging
+    def debug_stream(self, message: str):
+        if self.config:
+                events = self.graph.stream({"messages": [("user", message)]}, config=self.config)
+        else:
+            events = self.graph.stream({"messages": [("user", message)]})
+        for event in events:
+            for value in event.values():
+                if "sender" in value:
+                    sender = value["sender"]
+                else:
+                    sender = "tool"
+                print("-----------------")
+                print(sender, "\n", value["messages"][-1].content)
