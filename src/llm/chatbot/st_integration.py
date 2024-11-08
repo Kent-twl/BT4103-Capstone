@@ -8,7 +8,7 @@ sys.path.append(ROOT_DIR + "/src")
 sys.path.append(os.path.dirname(__file__))
 
 import streamlit as st
-from llm.multiagent_network import MultiAgentNetwork
+from llm.chatbot.chatbot import Chatbot
 
 DATA_DIR = ROOT_DIR + "data/raw"
 
@@ -20,7 +20,7 @@ def main():
             The user you are assisting today is a trader at an Australian financial institution,
             interested in analyzing some trading data and other matters related to finance and trading.
         """
-        return MultiAgentNetwork(main_system_message, db_path=DATA_DIR + "/orders.db", agents=["sql"], with_memory=True)
+        return Chatbot(main_system_message, db_path=DATA_DIR + "/orders.db", agents=["sql", "yfinance"], with_memory=True)
 
     st.title("Chatbot")
 

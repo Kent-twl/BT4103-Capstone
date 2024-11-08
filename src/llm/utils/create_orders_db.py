@@ -42,4 +42,4 @@ def create_orders_db(source_file, dest_dir, show_samples=False):
 
 
 if __name__ == "__main__":
-    create_orders_db(source_file=DATA_DIR+"/anonymised_data_v3.csv", dest_dir=DATA_DIR, show_samples=True)
+    create_orders_db(source_file=DATA_DIR+"/final_data.xlsx", dest_dir=DATA_DIR, show_samples=True)
