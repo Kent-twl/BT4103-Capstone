@@ -30,7 +30,7 @@ def detect_continuous_outliers_zscore(df, column, threshold=3):
     # Calculate z score
     df['zScoreOfCause'] = (df[column] - mean) / std
     # Identify outliers (z score more than 3)
-    outliers = df[np.abs(df['Z_Score']) > threshold]
+    outliers = df[np.abs(df['zScoreOfCause']) > threshold]
     return outliers
 
 # Function to conduct continuous outlier analysis on relevant columns

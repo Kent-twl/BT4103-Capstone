@@ -20,8 +20,8 @@ sys.path.append(ROOT_DIR)
 from src.functions.asic_functions import *
 
 @st.cache_data  # Cache the data loading so that every time the filter changes, data won't be loaded again
-def load_data(file_path="data.xlsx"):
-    df = pd.read_excel(file_path, sheet_name="data")
+def load_data(file_path="final_data.xlsx"):
+    df = pd.read_excel(file_path)
     df["Value"] *= df["ValueMultiplier"]
     df["Price"] *= df["PriceMultiplier"]
 
@@ -444,73 +444,91 @@ def create_business_intelligence_dashboard():
     )
     create_sankey(parent_container=third_row_col3, key="3")
 
+# Function for running the whole anomaly detection process and caching the results
 @st.cache_data
 def anom_results(df):
+    # Filter out created columns
     new_columns = ["UpdateDate_CumulativeNumberOfOrders", "CreateDate_CumulativeNumberOfOrders", 
     "UpdateDate_CumulativeQuantity", "UpdateDate_CumulativeValue", "UpdateDate_CumulativeDoneVolume", "UpdateDate_CumulativeDoneValue",
     "CreateDate_CumulativeQuantity", "CreateDate_CumulativeValue", "CreateDate_CumulativeDoneVolume", "CreateDate_CumulativeDoneValue"] 
     anomaly_df = df.reset_index(drop=True)
     anomaly_df = anomaly_df.drop(axis=1, columns = new_columns)
+    # Get results for outlier analysis
     continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
+    # Get results for anomaly detection
     anomalies = anomaly.anomaly_results(anomaly_df.copy())
     return df.copy(), continuous_outlier_df, discrete_outlier_df, anomalies
 
+# Function for displaying the results of anomaly detection
 def show_anom_scatter(anomaly_df, anomalies, selected_field):
+    # No legend if coloured by AccCode or SecCode, too many unique codes
     if selected_field in ["AccCode", "SecCode"]:
         sns.scatterplot(x='Price', y='Quantity', hue=selected_field,
-                        data=df, palette='Set2', legend=False)
+                        data=anomaly_df, palette='Set2', legend=False)
     else:
         sns.scatterplot(x='Price', y='Quantity', hue=selected_field,
-                        data=df, palette='Set2', legend=True)
+                        data=anomaly_df, palette='Set2', legend=True)
+    # Display anomalies with a red X
     sns.scatterplot(x='Price', y='Quantity', data=anomalies,
         color='red', marker='X', s=100, label='Anomalies')
     plt.title("Anomales Detected in Provided Data")
     plt.xlabel('Price')
     plt.ylabel('Quantity')
-    st.pyplot(plt)
+    return plt
 
+# Function to display the anomaly detection dashboard
 def create_anomaly_detection_dashboard():
     st.header("Anomaly Detection Dashboard")
+    # No dashboard if there is no data
     if df.empty:
         st.write("There is no data for the selected date.")
         return
     anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies = anom_results(df)
+    # Outlier analysis
     with st.container(border=True):
         st.subheader("Outlier Analysis Results")
         st.divider()
         col1, col2 = st.columns(2)
         with col1:
             st.write("Continuous Outliers")
+            # Display dataframe of flagged rows if any
             if not continuous_outlier_df.empty:
                 st.dataframe(continuous_outlier_df, height = 300)
             else:
                 st.write("There are no continuous outliers identified.")
         with col2:
             st.write("Discrete Outliers")
+            # Display dataframe of flagged rows if any
             if not discrete_outlier_df.empty:
                 st.dataframe(discrete_outlier_df, height = 300)
             else:
                 st.write("There are no discrete outliers identified.")
+    # Anomaly detection
     with st.container(border=True):
         st.subheader("Anomaly Detection Results")
         st.divider()
         col1, col2 = st.columns(2)
         with col1:
+            # User option to colour the scatterplot
             st.write("Please select the field you would like to see the data coloured by.")
+            # Relevant discrete variables only
             scatter_options = ['SecCode', 'AccCode','Side', 'BuySell', 'OrderSide', 'Exchange', 'Destination', 'Lifetime', 'OrderGiver', 'OrderTakerUserCode']
             selected_field = st.selectbox('Field: ', scatter_options)
+            # Replot the scatterplot
             if selected_field:
                 fig = show_anom_scatter(anomaly_df, anomalies, selected_field)
             else:
                 fig = show_anom_scatter(anomaly_df, anomalies, 'SecCode')
-                st.pyplot(fig)
+            st.pyplot(fig)
         with col2:
+            # Display dataframe of anomalies if any
             st.write("Anomalous Trades")
-            st.divider()
             if not anomalies.empty:
                 st.dataframe(anomalies, height = 500)
             else:
                 st.write("There are no anomalies identified.")
+        # Generate LLM description and insights based on graph and anomalies identified
+        # st.write(fig_description_generator(fig, "anomaly", "scatter", anomalies))
 
 def create_asic_reporting_dashboard():
     #User Selection for Dashboard Type
