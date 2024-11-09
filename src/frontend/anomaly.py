@@ -114,7 +114,7 @@ def isolation_forest(df, axs):
     anomalies = features[features['anomaly'] == -1]
     # Determine features causing the anomalies to be flagged out
     anomalies = get_top_features_if(model, features, anomalies)
-    print(f"Number of Anomalies Detected: {len(anomalies)}")
+    print(f"Number of IF Anomalies Detected: {len(anomalies)}")
     # show_scatterplots(subset, "Isolation Forest", 0, axs)
     return anomalies
 
@@ -138,7 +138,7 @@ def ocsvm(df, axs):
     subset['anomaly'] = features['anomaly']
     # Identify anomalies
     anomalies = features[features['anomaly'] == -1]
-    print(f"Number of Anomalies Detected: {len(anomalies)}")
+    print(f"Number of OCSVM Anomalies Detected: {len(anomalies)}")
     # show_scatterplots(subset, "One-Class SVM", 1, axs)
     return anomalies
 
@@ -162,7 +162,7 @@ def gmm(df, axs):
     anomalies = features[features['log_likelihood'] < threshold]
     features['anomaly'] = np.where(features['log_likelihood'] < threshold, -1, 1)
     subset['anomaly'] = features['anomaly']
-    print(f"Number of Anomalies Detected: {len(anomalies)}")
+    print(f"Number of GMM Anomalies Detected: {len(anomalies)}")
     # show_scatterplots(subset, "Gaussian Mixture Model", 2, axs)
     return anomalies
 
