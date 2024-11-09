@@ -452,12 +452,30 @@ def anom_results(df):
     "UpdateDate_CumulativeQuantity", "UpdateDate_CumulativeValue", "UpdateDate_CumulativeDoneVolume", "UpdateDate_CumulativeDoneValue",
     "CreateDate_CumulativeQuantity", "CreateDate_CumulativeValue", "CreateDate_CumulativeDoneVolume", "CreateDate_CumulativeDoneValue"] 
     anomaly_df = df.reset_index(drop=True)
-    anomaly_df = anomaly_df.drop(axis=1, columns = new_columns)
+    # anomaly_df = anomaly_df.drop(axis=1, columns = new_columns)
     # Get results for outlier analysis
     continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
     # Get results for anomaly detection
     anomalies = anomaly.anomaly_results(anomaly_df.copy())
     return df.copy(), continuous_outlier_df, discrete_outlier_df, anomalies
+
+# Function for applying filters and caching the results
+def apply_filters(anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies):
+    # Apply filters for all results so that they can be displayed
+    temp = anomaly_df.copy()
+    temp = filter_dataframe(temp, "AccCode", traders)
+    temp = filter_dataframe(temp, "Exchange", exchanges)
+    temp = filter_dataframe(temp, "Currency", currencies)
+    continuous_outlier_df = filter_dataframe(continuous_outlier_df, "AccCode", traders)
+    continuous_outlier_df = filter_dataframe(continuous_outlier_df, "Exchange", exchanges)
+    continuous_outlier_df = filter_dataframe(continuous_outlier_df, "Currency", currencies)
+    discrete_outlier_df = filter_dataframe(discrete_outlier_df, "AccCode", traders)
+    discrete_outlier_df = filter_dataframe(discrete_outlier_df, "Exchange", exchanges)
+    discrete_outlier_df = filter_dataframe(discrete_outlier_df, "Currency", currencies)
+    anomalies = filter_dataframe(anomalies, "AccCode", traders)
+    anomalies = filter_dataframe(anomalies, "Exchange", exchanges)
+    anomalies = filter_dataframe(anomalies, "Currency", currencies)
+    return temp, continuous_outlier_df, discrete_outlier_df, anomalies
 
 # Function for displaying the results of anomaly detection
 def show_anom_scatter(anomaly_df, anomalies, selected_field):
@@ -478,41 +496,40 @@ def show_anom_scatter(anomaly_df, anomalies, selected_field):
 
 # Function to display anomalies with Plotly
 def show_anom_scatter_plotly(anomaly_df, anomalies, selected_field):
-
     # Filter out unique values for selected fields and prepare data
     anomaly_df = anomaly_df[['Price', 'Quantity', selected_field]].drop_duplicates()
     anomalies = anomalies[['Price', 'Quantity']].drop_duplicates()
-
     # Create the main scatter plot for anomaly data
-    if selected_field in ["AccCode", "SecCode"]:
-        # Too many unique codes, no legend for AccCode or SecCode
-        fig = px.scatter(anomaly_df, x="Price", y="Quantity", color=selected_field,
-                         title="Anomalies Detected in Provided Data",
-                         labels={"Price": "Price", "Quantity": "Quantity"},
-                         color_discrete_sequence=px.colors.qualitative.Set2)
-    else:
-        # Include legend for other fields
-        fig = px.scatter(anomaly_df, x="Price", y="Quantity", color=selected_field,
-                         title="Anomalies Detected in Provided Data",
-                         labels={"Price": "Price", "Quantity": "Quantity"},
-                         color_discrete_sequence=px.colors.qualitative.Set2)
-
-    # Overlay anomalies with a red 'X' marker
-    fig.add_scatter(x=anomalies['Price'], y=anomalies['Quantity'],
+    fig = go.Figure()
+    for field_value in anomaly_df[selected_field].unique():
+        subset = anomaly_df[anomaly_df[selected_field] == field_value]
+        fig.add_trace(go.Scatter(x=subset["Price"], y=subset["Quantity"], mode='markers', 
+                                 name=str(field_value), marker=dict(size=4),showlegend=True))
+    # Overlay anomalies with a red 'X' marker 
+    fig.add_trace(go.Scatter(x=anomalies['Price'], y=anomalies['Quantity'],
                     mode='markers', marker=dict(symbol="x", color="red", size=10),
-                    name="Anomalies")
-
-    # Display plot
+                    name="Anomalies", legendrank=1))
+    fig.update_layout(
+        title="Anomalies Detected in Provided Data",
+        xaxis_title="Price",
+        yaxis_title="Quantity"
+    )
     return fig, anomalies
 
 # Function to display the anomaly detection dashboard
 def create_anomaly_detection_dashboard():
+    # Load full dataset for selected date
+    anomaly_df = pd.read_excel("final_data.xlsx")
+    anomaly_df = anomaly_df[anomaly_df["CreateDate"].dt.date == st.session_state.date]
     st.header("Anomaly Detection Dashboard")
     # No dashboard if there is no data
-    if df.empty:
-        st.write("There is no data for the selected date.")
+    if anomaly_df.empty:
+        st.write("There is no data for the selected date and filters.")
         return
-    anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies = anom_results(df)
+    # Get anomaly detection results
+    anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies = anom_results(anomaly_df)
+    # Filter results based on current filter options
+    temp, continuous_outlier_df, discrete_outlier_df, anomalies = apply_filters(anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies)
     # Outlier analysis
     with st.container(border=True):
         st.subheader("Outlier Analysis Results")
@@ -523,6 +540,8 @@ def create_anomaly_detection_dashboard():
             # Display dataframe of flagged rows if any
             if not continuous_outlier_df.empty:
                 st.dataframe(continuous_outlier_df, height = 300)
+                # Brief description of outliers
+                st.write(f"There are {len(continuous_outlier_df)} continuous outliers identified in the data. These points have an absolute z-score larger than 3 in their respective columns, and could be signs of order activity that deviates from the norm or an erroneous entry.")
             else:
                 st.write("There are no continuous outliers identified.")
         with col2:
@@ -530,41 +549,47 @@ def create_anomaly_detection_dashboard():
             # Display dataframe of flagged rows if any
             if not discrete_outlier_df.empty:
                 st.dataframe(discrete_outlier_df, height = 300)
+                # Brief description of outliers
+                st.write(f"There are {len(discrete_outlier_df)} discrete outliers identified in the data. The value of these points have a significantly lower proportion than the rest of the data in their respective column, and could mean an unusual order or a new player in the market.")
             else:
                 st.write("There are no discrete outliers identified.")
     # Anomaly detection
     with st.container(border=True):
         st.subheader("Anomaly Detection Results")
         st.divider()
-        col1, col2 = st.columns(2)
-        with col1:
-            # User option to colour the scatterplot
-            st.write("Please select the field you would like to see the data coloured by.")
-            # Relevant discrete variables only
-            scatter_options = ['SecCode', 'AccCode','Side', 'BuySell', 'OrderSide', 'Exchange', 'Destination', 'Lifetime', 'OrderGiver', 'OrderTakerUserCode']
-            selected_field = st.selectbox('Field: ', scatter_options)
-            # Replot the scatterplot
-            if selected_field:
-                fig, new_anoms = show_anom_scatter_plotly(anomaly_df, anomalies, selected_field)
-            else:
-                fig, new_anoms = show_anom_scatter_plotly(anomaly_df, anomalies, 'SecCode')
-            # st.pyplot(fig)
-            st.plotly_chart(fig)
-        with col2:
-            # Display dataframe of anomalies if any
-            st.write("Anomalous Trades")
-            if not new_anoms.empty:
-                st.dataframe(new_anoms, height = 500)
-            else:
-                st.write("There are no anomalies identified.")
-        # Generate LLM description and insights based on graph and anomalies identified
-        anom_description = fig_description_generator(
-            fig=fig, 
-            dash_type="anomaly", 
-            chart_type="scatter", 
-            vars=[selected_field],
-            additional_info = new_anoms)
-        st.write(anom_description)
+        # Check if there is any data after filters applied
+        if anomalies.empty:
+            st.write("There are no anomalies identified.")
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                # User option to colour the scatterplot
+                st.write("Please select the field you would like to see the data coloured by.")
+                # Relevant discrete variables only
+                scatter_options = ['SecCode', 'AccCode','Side', 'BuySell', 'OrderSide', 'Exchange', 'Destination', 'Lifetime', 'OrderGiver', 'OrderTakerUserCode']
+                selected_field = st.selectbox('Field: ', scatter_options)
+                # Replot the scatterplot
+                if selected_field:
+                    fig, new_anoms = show_anom_scatter_plotly(temp, anomalies, selected_field)
+                else:
+                    fig, new_anoms = show_anom_scatter_plotly(temp, anomalies, 'SecCode')
+                # Display plot
+                st.plotly_chart(fig)
+            with col2:
+                # Display dataframe of anomalies if any
+                st.write("Anomalous Trades")
+                if not anomalies.empty:
+                    st.dataframe(anomalies, height = 500)
+                else:
+                    st.write("There are no anomalies identified.")
+            # Generate LLM description and insights based on graph and anomalies identified
+            anom_description = fig_description_generator(
+                fig=fig, 
+                dash_type="anomaly", 
+                chart_type="scatter", 
+                vars=[selected_field],
+                additional_info = anomalies)
+            st.write(anom_description)
 
 def create_asic_reporting_dashboard():
     #User Selection for Dashboard Type
