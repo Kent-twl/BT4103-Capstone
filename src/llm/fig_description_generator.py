@@ -62,7 +62,8 @@ def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", cha
         dashboard_prompts.asic_dash_prompt if dash_type == "asic" else dashboard_prompts.bi_dash_prompt
     ## For anomaly detection dashboard, format the prompt with the reasons for classification
     if dash_type == "anomaly":
-        assert additional_info != None, \
+        # assert additional_info != None, \
+        assert additional_info is not None and not additional_info.empty, \
             "Please provide the description generator with the anomaly detection results for this dashboard."
         assert isinstance(additional_info, pd.DataFrame), "additional_info must be a pandas DataFrame"
         anomaly_results = additional_info.to_dict(orient="records")
