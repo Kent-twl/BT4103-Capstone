@@ -21,8 +21,7 @@ if "date" not in st.session_state:
     st.session_state.date = None
 
 
-# Update the style of multiselect input so that selected options will have
-# their text shown in full
+# Selected options in multiselect will have their text shown in full
 def update_multiselect_style():
     st.markdown(
         """
