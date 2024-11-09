@@ -1,7 +1,7 @@
 ## Descriptions of variables in the dataset
 variable_prompt = """
-    Here are brief explanations of the variables that you may encounter.
-    {variables}
+Here are brief explanations of the variables that you may encounter.
+{variables}
 """
 
 ##TODO: Split the prompt into variables for different contexts (BI, ASIC, Anomaly Detection) and exclude irrelevant variables

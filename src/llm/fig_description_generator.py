@@ -26,7 +26,8 @@ assert os.environ['LANGCHAIN_API_KEY'], "Please set the LANGCHAIN_API_KEY enviro
 assert os.environ['OPENAI_API_KEY'], "Please set the OPENAI_API_KEY environment variable"
 
 
-def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", chart_type="line", date_range="today", vars=[], additional_info=None):
+def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", chart_type="line", \
+                              date_range="today", vars=[], additional_info=None) -> str:
     """
     fig: plotly.graph_objs.Figure
     The figure object for which a description is to be generated.
@@ -44,7 +45,7 @@ def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", cha
     List of variables used in the chart.
 
     additional_info: Any
-    Additional info to be included in the description, eg. for anomaly detection dashboards.
+    Additional info to be included in the description, eg. for anomaly and ASIC dashboards.
     """
     ##TODO: Use multi-modal multi-agent graph
     ## Initialize LLM
@@ -54,12 +55,13 @@ def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", cha
     try:
         fig_bytes =  base64.b64encode(fig.to_image(format='png', engine='kaleido')).decode('utf-8')
     except Exception as e:
-        return "Error generating image bytes: " + e
+        return "Error generating image bytes:\n" + repr(e)
 
     ## Get necessary prompts
     system_prompt = dashboard_prompts.system_prompt
     dash_prompt = dashboard_prompts.anomaly_dash_prompt if dash_type == "anomaly" else \
         dashboard_prompts.asic_dash_prompt if dash_type == "asic" else dashboard_prompts.bi_dash_prompt
+    
     ## For anomaly detection dashboard, format the prompt with the reasons for classification
     if dash_type == "anomaly":
         # assert additional_info != None, \
@@ -68,10 +70,19 @@ def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", cha
         assert isinstance(additional_info, pd.DataFrame), "additional_info must be a pandas DataFrame"
         anomaly_results = additional_info.to_dict(orient="records")
         dash_prompt = dash_prompt.format(anomalies_and_reasons=anomaly_results)
+
+    ## For ASIC dashboards, format the prompt with the clause information
+    if dash_type == "asic":
+        assert additional_info != None, \
+            "Please provide the description generator with the ASIC clause information for this dashboard."
+        assert isinstance(additional_info, dict), "additional_info must be a dictionary"
+        dash_prompt = dash_prompt.format(additional_info=additional_info)
     
+    ## Pick the relevant variables that are featured in the chart
     vars_dict = variable_descriptions.variable_dict
     relevant_vars = ", ".join([vars_dict[var] for var in vars if var in vars_dict])
     vars_prompt = variable_descriptions.variable_prompt.format(variables=relevant_vars)
+    
     messages = [
         SystemMessage(content=system_prompt),
         SystemMessage(content=dash_prompt),
@@ -86,8 +97,8 @@ def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", cha
                 {
                     "type": "text", 
                     "text": f"""
-                        I am an analyst looking at this {chart_type} chart displaying data from {date_range}. 
-                        Provide a brief description of the chart for me.
+                    I am an analyst looking at this {chart_type} chart displaying data from {date_range}. 
+                    Provide a brief description of the chart for me.
                     """
                 },
                 {
@@ -96,12 +107,16 @@ def fig_description_generator(fig: plotly.graph_objs.Figure, dash_type="bi", cha
                         "url": f"data:image/png;base64,{fig_bytes}", "type": "png"
                     },
                 },
+                {
+                    "type": "text",
+                    "text": "Description: "
+                }
             ],
         )
         messages.append(message)
 
         response = openai_llm.invoke(messages)
     except Exception as e:
-        return "Error creating message: " + e
+        return "Error creating message:\n" + repr(e)
     
     return response.content
