@@ -15,7 +15,7 @@ import seaborn as sns
 
 ROOT_DIR = os.path.join(os.path.dirname(__file__), "../../")
 sys.path.append(ROOT_DIR)
-# from src.llm.utils.fig_description_generator import fig_description_generator
+from src.llm.fig_description_generator import fig_description_generator
 #functional import
 from src.functions.asic_functions import *
 
@@ -476,6 +476,35 @@ def show_anom_scatter(anomaly_df, anomalies, selected_field):
     plt.ylabel('Quantity')
     return plt
 
+# Function to display anomalies with Plotly
+def show_anom_scatter_plotly(anomaly_df, anomalies, selected_field):
+
+    # Filter out unique values for selected fields and prepare data
+    anomaly_df = anomaly_df[['Price', 'Quantity', selected_field]].drop_duplicates()
+    anomalies = anomalies[['Price', 'Quantity']].drop_duplicates()
+
+    # Create the main scatter plot for anomaly data
+    if selected_field in ["AccCode", "SecCode"]:
+        # Too many unique codes, no legend for AccCode or SecCode
+        fig = px.scatter(anomaly_df, x="Price", y="Quantity", color=selected_field,
+                         title="Anomalies Detected in Provided Data",
+                         labels={"Price": "Price", "Quantity": "Quantity"},
+                         color_discrete_sequence=px.colors.qualitative.Set2)
+    else:
+        # Include legend for other fields
+        fig = px.scatter(anomaly_df, x="Price", y="Quantity", color=selected_field,
+                         title="Anomalies Detected in Provided Data",
+                         labels={"Price": "Price", "Quantity": "Quantity"},
+                         color_discrete_sequence=px.colors.qualitative.Set2)
+
+    # Overlay anomalies with a red 'X' marker
+    fig.add_scatter(x=anomalies['Price'], y=anomalies['Quantity'],
+                    mode='markers', marker=dict(symbol="x", color="red", size=10),
+                    name="Anomalies")
+
+    # Display plot
+    return fig, anomalies
+
 # Function to display the anomaly detection dashboard
 def create_anomaly_detection_dashboard():
     st.header("Anomaly Detection Dashboard")
@@ -516,19 +545,26 @@ def create_anomaly_detection_dashboard():
             selected_field = st.selectbox('Field: ', scatter_options)
             # Replot the scatterplot
             if selected_field:
-                fig = show_anom_scatter(anomaly_df, anomalies, selected_field)
+                fig, new_anoms = show_anom_scatter_plotly(anomaly_df, anomalies, selected_field)
             else:
-                fig = show_anom_scatter(anomaly_df, anomalies, 'SecCode')
-            st.pyplot(fig)
+                fig, new_anoms = show_anom_scatter_plotly(anomaly_df, anomalies, 'SecCode')
+            # st.pyplot(fig)
+            st.plotly_chart(fig)
         with col2:
             # Display dataframe of anomalies if any
             st.write("Anomalous Trades")
-            if not anomalies.empty:
-                st.dataframe(anomalies, height = 500)
+            if not new_anoms.empty:
+                st.dataframe(new_anoms, height = 500)
             else:
                 st.write("There are no anomalies identified.")
         # Generate LLM description and insights based on graph and anomalies identified
-        # st.write(fig_description_generator(fig, "anomaly", "scatter", anomalies))
+        anom_description = fig_description_generator(
+            fig=fig, 
+            dash_type="anomaly", 
+            chart_type="scatter", 
+            vars=[selected_field],
+            additional_info = new_anoms)
+        st.write(anom_description)
 
 def create_asic_reporting_dashboard():
     #User Selection for Dashboard Type
@@ -621,7 +657,7 @@ def create_asic_reporting_dashboard():
             "RG 265.130 (Best Execution Obligation)",
             "RG 265.12 (Supervision of Market Participants)",
             "RG 265.51 (Suspicious Activity Reporting)",
-            "RG 265.74 (Crossing Systems Reporting)"
+            "RG 265.293 (Crossing Systems Reporting)"
         ]
         selected_chart = st.selectbox("Select the Reporting Standard you want to view:", asic_chart_options)
         
@@ -675,6 +711,23 @@ def create_asic_reporting_dashboard():
 
             # Display the line graph in Streamlit
             st.plotly_chart(area_fig)
+
+            # Generate and display description for the area chart
+            area_description = fig_description_generator(
+                fig=area_fig, 
+                dash_type="asic", 
+                chart_type="area", 
+                date_range="today", 
+                vars=["ExecutionTime", "CumulativeNumberOfOrders"],
+                additional_info={
+                    'Clause': 'Under Rule 3.8.1, a market participant must take reasonable steps when handling and executing an order in relevant products to obtain the bestoutcome for its client. For a retail client, the best outcome means the best total consideration, taking into account client instructions. For wholesale clients, other outcomes may be relevant—including speed, likelihood ofexecution and any other relevant considerations',
+                    'Generic Description': 'The trader must execute trades at the earliest if possible. If a trader typically takes a long time to execute a trade, he might be in violation of the clause, as they are not acting in the best interest of their client',
+                    'How the metric is calculated':'Metric for this standard will include the distribution of execution speed, which will show if the traders are executing the trades in the shortest time possible',
+                    'Account Code': 'This charts shows the distribution for all traders in the company',
+                    'Other Info': 'There is an option to drill down to trader level at the option bar above the chart',
+                },
+            )
+            st.markdown(area_description)
             
             # Show additional details if a specific AccCode is selected
             if selected_acccode != "All":
@@ -685,30 +738,22 @@ def create_asic_reporting_dashboard():
                                                 labels={"CreateDate": "Timestamp", "CumulativeNumberOfOrders": " Number of Orders"})
                 st.plotly_chart(cumulative_orders_fig)
                 
-                # # Calculate the count and percentage of orders filled immediately
-                # immediate_fill_count = filtered_df[filtered_df['ExecutionTime'] == 0]['CumulativeNumberOfOrders'].sum()
-                # total_order_count = filtered_df['CumulativeNumberOfOrders'].sum()
-                # immediate_fill_percentage = (immediate_fill_count / total_order_count) * 100 if total_order_count > 0 else 0
-
-                # # Display the metrics with custom styling
-                # st.markdown("""
-                #     <div style="text-align: center; padding: 10px; border-radius: 8px; background-color: #4CAF50; color: white;">
-                #         <h3>Orders Filled Immediately</h3>
-                #         <h1 style="font-size: 40px;">{:.2f}%</h1>
-                #         <p style="font-size: 18px;">({:,} out of {:,} orders)</p>
-                #     </div>
-                # """.format(immediate_fill_percentage, immediate_fill_count, total_order_count), unsafe_allow_html=True)
-
-                # # Display a breakdown of orders by ExecutionTime within this specific AccCode
-                # execution_time_data = filtered_df.groupby('ExecutionTime')['CumulativeNumberOfOrders'].sum().reset_index()
-                # execution_time_fig = px.bar(
-                #     execution_time_data, 
-                #     x="ExecutionTime", 
-                #     y="CumulativeNumberOfOrders",
-                #     title="Number of Orders by Time Taken for Execution",
-                #     labels={"ExecutionTime": "Execution Time", "CumulativeNumberOfOrders": "Number of Orders"}
-                # )
-                # st.plotly_chart(execution_time_fig)
+                #Generate and display description for cumulative orders chart
+                cumulative_orders_description = fig_description_generator(
+                    fig=cumulative_orders_fig, 
+                    dash_type="asic", 
+                    chart_type="bar", 
+                    date_range="today", 
+                    vars=["CreateDate", "CumulativeNumberOfOrders"],
+                    additional_info={
+                        'Clause': 'Under Rule 3.8.1, a market participant must take reasonable steps when handling and executing an order in relevant products to obtain the bestoutcome for its client. For a retail client, the best outcome means the best total consideration, taking into account client instructions. For wholesale clients, other outcomes may be relevant—including speed, likelihood ofexecution and any other relevant considerations',
+                        'Generic Description': 'This chart will show the trades done throughout the day. If the trades are clustered around a specific timestamp, it may signify that the trader is not done in the best interest ofthe client',
+                        'How the metric is calculated':'Metric for this standard will include the distribution of orders throughout the day',
+                        'Account Code': 'This charts shows the distribution for the specific accountcode in the selected in the dropdown menu',
+                        'Other Info': 'There is an option to drill down to trader level at the option bar above the chart',
+                        },
+                )
+                st.markdown(cumulative_orders_description)
 
                 # Show additional data details in a table
                 st.write("Additional data details:")
@@ -745,6 +790,23 @@ def create_asic_reporting_dashboard():
                                         title="Done Volume Over Time",
                                         labels={"CreateDate": "Date", "DoneVolume": "Done Volume"})
                 st.plotly_chart(done_volume_fig)
+
+                                #Generate and display description for cumulative orders chart
+                done_volume_description = fig_description_generator(
+                    fig=done_volume_fig, 
+                    dash_type="asic", 
+                    chart_type="line", 
+                    date_range="today", 
+                    vars=["CreateDate", "DoneVolume"],
+                    additional_info={
+                        'Clause': 'The ASIC Committee is responsible for supervising market participants, market operators and other prescribed entities for compliance with the market integrity rules.',
+                        'Generic Description': 'The ASIC Committee requires trading activity transparency for the day, and the amount of trade done in the day is shown in accordance to that requirement.',
+                        'How the metric is calculated':'This metric will provide the user with volume traded transparency with regards to the activity by the trader across the day',
+                        'Account Code': 'This charts shows the distribution for the specific accountcode in the selected in the dropdown menu',
+                        'Other Info': 'N.A.',
+                        },
+                )
+                st.markdown(done_volume_description)
                 
                 # Display cumulative value over time for the selected AccCode
                 cumulative_value = filtered_df[['CreateDate', 'Value']].drop_duplicates().sort_values(by='CreateDate')
@@ -752,6 +814,22 @@ def create_asic_reporting_dashboard():
                                     title="Order Value Over Time",
                                     labels={"CreateDate": "Date", "Value": "Order Value"})
                 st.plotly_chart(value_fig)
+
+                value_description = fig_description_generator(
+                    fig=value_fig, 
+                    dash_type="asic", 
+                    chart_type="line", 
+                    date_range="today", 
+                    vars=["CreateDate", "Value"],
+                    additional_info={
+                        'Clause': 'The ASIC Committee is responsible for supervising market participants, market operators and other prescribed entities for compliance with the market integrity rules.',
+                        'Generic Description': 'The ASIC Committee requires trading activity transparency for the day, and the value of trades done in the day is shown in accordance to that requirement.',
+                        'How the metric is calculated':'This metric will provide the user with value traded transparency with regards to the activity by the trader across the day',
+                        'Account Code': 'This charts shows the distribution for the specific accountcode in the selected in the dropdown menu',
+                        'Other Info': 'N.A.',
+                        },
+                )
+                st.markdown(value_description)
                 
                 # Display a breakdown of average done volume per order type within this specific AccCode
                 avg_done_volume_data = filtered_df.groupby('OrderType')['DoneVolume'].mean().reset_index()
@@ -759,10 +837,26 @@ def create_asic_reporting_dashboard():
                                             title="Average Done Volume by Order Type",
                                             labels={"OrderType": "Order Type", "DoneVolume": "Average Done Volume"})
                 st.plotly_chart(avg_done_volume_fig)
+
+                avg_done_volume_description = fig_description_generator(
+                    fig=avg_done_volume_fig, 
+                    dash_type="asic", 
+                    chart_type="bar", 
+                    date_range="today", 
+                    vars=["OrderType", "DoneVolume"],
+                    additional_info={
+                        'Clause': 'The ASIC Committee is responsible for supervising market participants, market operators and other prescribed entities for compliance with the market integrity rules.',
+                        'Generic Description': 'The ASIC Committee requires trading activity transparency for the day, and the volume traded for each order type is shown in accordance to that requirement.',
+                        'How the metric is calculated':'This metric will provide the user with average volume traded for each order type of the day',
+                        'Account Code': 'This charts shows the distribution for the specific accountcode in the selected in the dropdown menu',
+                        'Other Info': 'N.A.',
+                        },
+                )     
+                st.markdown(avg_done_volume_description)           
                 
                 # Show additional data details in a table
                 st.write("Additional data details:")
-                st.dataframe(filtered_df[['AccCode','CreateDate','OrderSide', 'OrderType', 'DoneVolume', 'Price', 'Quantity', 'ExecutionVenue']])
+                st.dataframe(filtered_df[['AccCode','CreateDate', 'OrderSide', 'OrderType', 'DoneVolume', 'Price', 'Quantity', 'ExecutionVenue']])
 
         elif selected_chart == "RG 265.51 (Suspicious Activity Reporting)":
             # User input for large order threshold
@@ -787,6 +881,23 @@ def create_asic_reporting_dashboard():
                             barmode='group', title=f"RG 265.51 (Suspicious Activity Reporting) - {selected_acccode if selected_acccode != 'All' else 'All Accounts'}",
                             labels={"DoneVolume": "Total Done Volume", "AccCode": "Account Code", "OrderSizeCategory": "Order Size"})
             st.plotly_chart(bar_fig)
+
+            bar_description = fig_description_generator(
+                fig=bar_fig, 
+                dash_type="asic", 
+                chart_type="bar", 
+                date_range="today", 
+                vars=["AccCode", "DoneVolume"],
+                additional_info={
+                    'Clause': 'Breaches (or likely breaches) of market integrity rules may constitute reportable situations for AFS licensees under s912D. If certain breaches of the market integrity rules are required to be reported under s912DAA, market participants need to report them to ASIC.',
+                    'Generic Description': f'This chart is shown to portray the number of orders deemed large and the number of orders that are normal based on the threshold: {threshold}. This is to serve as an indicator of market manipulation, where a trader may be executing large amount of trades to deliberate manipulate market sentiment.',
+                    'How the metric is calculated':'This metric will provide the user with the proportion of trades that are flagged as large orders, which may be an indicator of a breach of market integrity rules.',
+                    'Account Code': 'This charts shows the distribution for the all accountcode in the data',
+                    'Other Info': f'The threshold of large order for this analysis is defined as {threshold}',
+                    },
+            )     
+            st.markdown(bar_description)   
+
             
             # Show additional details if a specific AccCode is selected
             if selected_acccode != "All":
@@ -798,6 +909,22 @@ def create_asic_reporting_dashboard():
                                         barmode='stack', title="Order Types within Selected Account Code",
                                         labels={"OrderType": "Order Type", "Count": "Number of Orders", "OrderSizeCategory": "Order Size Category"})
                 st.plotly_chart(order_type_fig)
+
+                order_type_description = fig_description_generator(
+                    fig=order_type_fig, 
+                    dash_type="asic", 
+                    chart_type="bar", 
+                    date_range="today", 
+                    vars=["OrderType", "Count"],
+                    additional_info={
+                        'Clause': 'Breaches (or likely breaches) of market integrity rules may constitute reportable situations for AFS licensees under s912D. If certain breaches of the market integrity rules are required to be reported under s912DAA, market participants need to report them to ASIC.',
+                        'Generic Description': 'This chart should provide the user with a distribution of order type being traded for further analysis. There may be instances where one order type is traded excessively to manipulate the market.',
+                        'How the metric is calculated':'This metric will provide the user with the count of each type of order.',
+                        'Account Code': 'This charts shows the distribution for the all accountcode in the data',
+                        'Other Info': f'The threshold of large order for this analysis is defined as {threshold}',
+                        },
+                )     
+                st.markdown(order_type_description)   
                 
                 # Display total value of orders within this specific account code
                 value_data = filtered_df.groupby('OrderSizeCategory')['Value'].sum().reset_index()
@@ -805,12 +932,28 @@ def create_asic_reporting_dashboard():
                                 title="Total Order Value within Selected Account Code",
                                 labels={"OrderSizeCategory": "Order Size Category", "Value": "Total Order Value"})
                 st.plotly_chart(value_fig)
+
+                value_description = fig_description_generator(
+                fig=value_fig, 
+                dash_type="asic", 
+                chart_type="bar", 
+                date_range="today", 
+                vars=["OrderSizeCategory", "Value"],
+                additional_info={
+                    'Clause': 'Breaches (or likely breaches) of market integrity rules may constitute reportable situations for AFS licensees under s912D. If certain breaches of the market integrity rules are required to be reported under s912DAA, market participants need to report them to ASIC.',
+                    'Generic Description': 'This chart should provide the user with an indication of the value of the baskets of large trade volume and normal trade volume. If the large trade volume is of high value it may indicate an attempt to manipulate the market.',
+                    'How the metric is calculated':'This metric will provide the user with the value of each trade order category.',
+                    'Account Code': 'This charts shows the distribution for the specified accountcode',
+                    'Other Info': f'The threshold of large order for this analysis is defined as {threshold}',
+                    },
+                )     
+                st.markdown(value_description)   
                 
                 # Show a table for additional data if needed
                 st.write("Additional data details:")
                 st.dataframe(filtered_df[['AccCode','OrderNo','OrderSide','OrderType', 'DoneVolume', 'Price', 'Quantity', 'Value', 'ExecutionVenue']])
 
-        elif selected_chart == "RG 265.74 (Crossing Systems Reporting)":
+        elif selected_chart == "RG 265.293 (Crossing Systems Reporting)":
             st.subheader(selected_chart)
             # Dropdown to select a specific exchange system
             unique_exchange_systems = df["ExecutionVenueCategory"].unique()
@@ -828,6 +971,22 @@ def create_asic_reporting_dashboard():
                                 title=f"{selected_chart} - {selected_exchange_system if selected_exchange_system != 'All' else 'All Systems'}",
                                 labels={"ExecutionVenueCategory": "Execution Venue", "AccCode": "Account Code", "Count of Orders": "Number of Orders"})
             st.plotly_chart(tree_fig)
+
+            tree_description = fig_description_generator(
+            fig=tree_fig, 
+            dash_type="asic", 
+            chart_type="treemap", 
+            date_range="today", 
+            vars=["ExecutionVenueCategory", "AccCode"],
+            additional_info={
+                'Clause': 'A market participant that operates a crossing system must lodge a crossing system report with ASIC.',
+                'Generic Description': 'This chart should provide the user with a number of trades executed in the crossing system by their traders as required by ASIC.',
+                'How the metric is calculated':'This metric will provide the user with the number of trade executed by each trader under their jurisdiction in a crossing system.',
+                'Account Code': 'This charts shows data for the all accountcode in the data',
+                'Other Info': 'N.A.',
+                },
+            )     
+            st.markdown(tree_description)  
             
             # Show additional details if a specific system is selected
             if selected_exchange_system != "All":
@@ -839,6 +998,22 @@ def create_asic_reporting_dashboard():
                                         barmode='stack', title="Order Types within Selected Exchange System",
                                         labels={"AccCode": "Account Code", "Count": "Number of Orders", "OrderType": "Order Type"})
                 st.plotly_chart(order_type_fig)
+
+                order_type_description = fig_description_generator(
+                    fig=order_type_fig, 
+                    dash_type="asic", 
+                    chart_type="bar", 
+                    date_range="today", 
+                    vars=["AccCode", "Count"],
+                    additional_info={
+                        'Clause': 'A market participant that operates a crossing system must lodge a crossing system report with ASIC.',
+                        'Generic Description': 'This chart should provide the user with the proportion of order type for trade in the crossing system by their traders as required by ASIC.',
+                        'How the metric is calculated':f'This metric will provide the user with the proportion of order type for trade executed by each trader under their jurisdiction for {selected_exchange_system}.',
+                        'Account Code': 'This charts shows data for the all accountcode in the data',
+                        'Other Info': 'N.A.',
+                        },
+                )     
+                st.markdown(order_type_description) 
                 
                 # Display total done volume within this specific exchange system
                 volume_data = filtered_df.groupby('AccCode')['DoneVolume'].sum().reset_index()
@@ -846,6 +1021,22 @@ def create_asic_reporting_dashboard():
                                     title="Total Done Volume within Selected Exchange System",
                                     labels={"AccCode": "Account Code", "DoneVolume": "Done Volume"})
                 st.plotly_chart(volume_fig)
+
+                volume_description = fig_description_generator(
+                    fig=volume_fig, 
+                    dash_type="asic", 
+                    chart_type="bar", 
+                    date_range="today", 
+                    vars=["AccCode", "DoneVolume"],
+                    additional_info={
+                        'Clause': 'A market participant that operates a crossing system must lodge a crossing system report with ASIC.',
+                        'Generic Description': 'This chart should provide the user with volume of trades executed in the crossing system by their traders as required by ASIC.',
+                        'How the metric is calculated':f'This metric will provide the user with the volume of trade executed by each trader under their jurisdiction for {selected_exchange_system}.',
+                        'Account Code': 'This charts shows data for the all accountcode in the data',
+                        'Other Info': 'N.A.',
+                        },
+                )     
+                st.markdown(volume_description) 
                 
                 # Show a table for additional data if needed
                 st.write("Additional data details:")
