@@ -44,13 +44,13 @@ assert os.environ["OPENAI_API_KEY"], "Please set the OPENAI_API_KEY environment 
 def create_agent(llm, tools, system_message: str):
     prompt = ChatPromptTemplate.from_messages(
         [
-            SystemMessage(multiagent_graph_agent_prompt),
+            ("system", multiagent_graph_agent_prompt),
             MessagesPlaceholder(variable_name="messages")
         ]
     )
 
-    prompt.partial(system_message=system_message)
-    prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
+    prompt = prompt.partial(system_message=system_message)
+    prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
 
     return prompt | llm.bind_tools(tools)
 
@@ -59,13 +59,13 @@ def create_agent(llm, tools, system_message: str):
 def create_entry_point(llm, other_assistants, system_message: str):
     prompt = ChatPromptTemplate.from_messages(
         [
-            SystemMessage(multimodal_multiagent_entry_point),
+            ("system", multimodal_multiagent_entry_point),
             MessagesPlaceholder(variable_name="messages")
         ]
     )
 
-    prompt.partial(system_message=system_message)
-    prompt.partial(other_assistants="\n".join(other_assistants))
+    prompt = prompt.partial(system_message=system_message)
+    prompt = prompt.partial(other_assistants="\n".join(other_assistants))
 
     return prompt | llm
 
@@ -74,14 +74,14 @@ def create_entry_point(llm, other_assistants, system_message: str):
 def create_prompt_engineer(llm, other_assistants, system_message: str):
     prompt = ChatPromptTemplate.from_messages(
         [
-            SystemMessage(multiagent_graph_engineer_prompt),
+            ("system", multiagent_graph_engineer_prompt),
             MessagesPlaceholder(variable_name="messages")
         ]
     )
 
-    prompt.partial(system_message=system_message)
-    prompt.partial(other_assistants="\n".join(other_assistants))
-
+    prompt = prompt.partial(system_message=system_message)
+    prompt = prompt.partial(other_assistants="\n".join(other_assistants))
+    
     return prompt | llm
 
 
@@ -154,23 +154,19 @@ def create_man_with_prompt_engineer(llm, main_system_message, db_path, with_memo
         sql_tools,
         # system_message=hub.pull("langchain-ai/sql-agent-system-prompt").format(dialect="SQLite", top_k=5)
         system_message="""
-            System: You are an agent designed to interact with a SQL database.
-            Given an input question, create a syntactically correct SQLite query to run, 
-            then look at the results of the query and return the answer.
-            Never query for all the columns from a specific table, only ask for the relevant columns given the question.
-            You have access to tools for interacting with the database.
-            Only use the below tools. Only use the information returned by the below tools to construct your final answer.
-            You MUST double check your query before executing it. If you get an error while executing a query, rewrite the query and try again.
+        You are an agent designed to interact with a SQL database.
+        Given an input question yb the prompt engineer, create a syntactically correct SQLite query to run, 
+        then look at the results of the query and return the answer.
+        Never query for all the columns from a specific table, only ask for the relevant columns given the question.
+        You have access to tools for interacting with the database.
+        Only use the information returned by the aforementioned tools to construct your final answer.
+        You MUST double check your query before executing it. If you get an error while executing a query, rewrite the query and try again.
 
-            DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
+        DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
 
-            To start you should ALWAYS look at the tables in the database to see what you can query.
-            Do NOT skip this step.
-            Then you should query the schema of the most relevant tables.
-
-            In this case, you are assisting a team of traders and analysts in deriving insights from a chart.
-            Do this using available information in the database. For instance, you could provide historical data
-            to make comparisons, or retrieve specific data points to answer questions.
+        The database only has one table named 'orders'.
+        To start you should ALWAYS query the schema of the table to see what you can query.
+        Do NOT skip this step.
         """
     )
 
@@ -197,11 +193,11 @@ def create_man_with_prompt_engineer(llm, main_system_message, db_path, with_memo
         llm,
         tavily_tools,
         system_message="""
-            You are an AI assistant to a team of traders and analysts. Help them find relevant news or information to support their needs
-            or address their problems. Pay attention to the specified date ranges. Run a search for each day of the date range, 
-            and compile the results. If no dates are specified, retrieve the latest information you have.
-            If you cannot find all the required information, it is ok, just respond with what you have.
-            Make sure you answer the user's question directly in your response. Do not ask for follow-ups.
+        You are a web-search agent assisting a team of traders and analysts. Help them find relevant news or information to support their needs
+        or address their problems. Pay attention to the specified date ranges. If no dates are specified, retrieve the latest information you have.
+        Summarize the info you find without providing internet links to the sources.
+        If you cannot find all the required information, it is ok, just respond with what you have.
+        Act according to the prompt engineer's instructions. Make sure you answer the question directly in your response. Do not ask for follow-ups.
         """
     )
 
@@ -211,16 +207,16 @@ def create_man_with_prompt_engineer(llm, main_system_message, db_path, with_memo
         name="tavily_agent"
     )
 
-    other_assistants.append("Tavily assistant - Searches the web for relevant info to supplement answers.")
+    other_assistants.append("Tavily assistant - Searches the web for relevant info to answer questions to supplement other responses.")
 
     ## Set up prompt engineer
     prompt_engineer = create_prompt_engineer(
         llm,
         other_assistants=other_assistants,
         system_message="""
-            Your team is assisting financial traders and analysts in deriving insights from dashboard charts.
-            The entry point LLM will perform a preliminary description of the chart, and provide some avenues
-            for further exploration. 
+        Your team is assisting financial traders and analysts in deriving insights from dashboard charts.
+        The entry point LLM will perform a preliminary description of the chart, and provide some avenues
+        for further exploration. 
         """
     )
 
@@ -230,18 +226,18 @@ def create_man_with_prompt_engineer(llm, main_system_message, db_path, with_memo
         name="prompt_engineer"
     )
 
-    ## Create entry point of multi-agent network
-    entry_point = create_entry_point(
-        llm,
-        other_assistants=other_assistants,
-        system_message=main_system_message
-    )
+    # ## Create entry point of multi-agent network
+    # entry_point = create_entry_point(
+    #     llm,
+    #     other_assistants=other_assistants,
+    #     system_message=main_system_message
+    # )
 
-    entry_point_node = functools.partial(
-        basic_node,
-        runnable=entry_point,
-        name="entry_point"
-    )
+    # entry_point_node = functools.partial(
+    #     basic_node,
+    #     runnable=entry_point,
+    #     name="entry_point"
+    # )
 
     ## Define tool node
     tools = all_tools 
