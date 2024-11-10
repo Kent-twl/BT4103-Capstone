@@ -81,6 +81,20 @@ def generate_automated_report(fig):
     return "automated reported to be here"
 
 
+if "bi_figures_description" not in st.session_state:
+    st.session_state.bi_figures_description = {}
+if "bi_figures_changed" not in st.session_state:
+    st.session_state.bi_figures_changed = {}
+
+# Callback to handle when the multiselect in the figures have changed
+def handle_bi_local_filter_change(key):
+    st.session_state.bi_figures_changed[key] = True
+
+def update_bi_figures_description(key, fig, chart_type, vars):
+    if st.session_state.bi_figures_changed.get(key, True):
+        st.session_state.bi_figures_description[key] = fig_description_generator(fig=fig, dash_type="bi", chart_type=chart_type, date_range=f"{st.session_state.date}", vars=vars)
+        st.session_state.bi_figures_changed[key] = False
+
 
 def create_business_intelligence_dashboard():
     # ============================================================
@@ -132,6 +146,7 @@ def create_business_intelligence_dashboard():
             index=variable_index,
             key=key + "boxplot_variable",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "boxplot")
         )
         # Filter df for the top 5 security codes
         top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
@@ -147,9 +162,10 @@ def create_business_intelligence_dashboard():
             showlegend=False,
         )
         child_container.plotly_chart(fig, key=key + "boxplot")
+        update_bi_figures_description(key=key + "boxplot", fig=fig, chart_type="boxplot", vars=[variable, "SecCode"])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="boxplot", date_range="today", vars=[variable, "SecCode"]))
+            expander.write(st.session_state.bi_figures_description[key + "boxplot"])
 
 
     def create_pie_chart_for_each_security(
@@ -171,6 +187,7 @@ def create_business_intelligence_dashboard():
             index=variable_index,
             key=key + "boxplot_variable",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "piechart")
         )
         top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
         specs = [[{"type": "domain"} for i in top5_sec_code]]
@@ -200,10 +217,11 @@ def create_business_intelligence_dashboard():
             margin=dict(t=40, b=0),
             annotations=annotations,
         )
-        child_container.plotly_chart(fig, key=key + "boxplot")
+        child_container.plotly_chart(fig, key=key + "piechart")
+        update_bi_figures_description(key=key + "piechart", fig=fig, chart_type="piechart", vars=[variable, "SecCode"])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="piechart", date_range="today", vars=[variable, "SecCode"]))
+            expander.write(st.session_state.bi_figures_description[key + "piechart"])
 
     first_row = st.container()
     first_row_col1, first_row_col2 = first_row.columns([40, 60])
@@ -211,7 +229,7 @@ def create_business_intelligence_dashboard():
     create_pie_chart_for_each_security(parent_container=first_row_col2, key="5")
 
     # ============================================================
-    # Section: Box Plot and Pie Chart
+    # Section: Pie Chart, Bar Chart and Histogram
     # ============================================================
     def create_pie_chart(parent_container, key):
         child_container = parent_container.container(border=True)
@@ -231,6 +249,7 @@ def create_business_intelligence_dashboard():
             index=0,
             key=key + "pie_variable",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "pie")
         )
         value_counts = df[variable].value_counts()
         fig = px.pie(values=value_counts.values, names=value_counts.index).update_layout(
@@ -239,9 +258,10 @@ def create_business_intelligence_dashboard():
             margin=dict(t=30, b=0, l=0, r=0),
         )
         child_container.plotly_chart(fig, key=key + "pie")
+        update_bi_figures_description(key=key + "pie", fig=fig, chart_type="piechart", vars=[variable])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="piechart", date_range="today", vars=[variable]))
+            expander.write(st.session_state.bi_figures_description[key + "pie"])
 
 
     def create_bar_chart(parent_container, key):
@@ -262,6 +282,7 @@ def create_business_intelligence_dashboard():
             index=0,
             key=key + "bar_var",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "bar")
         )
         value_counts = df[variable].value_counts()
         percentages = (value_counts / value_counts.sum() * 100).round(
@@ -289,9 +310,10 @@ def create_business_intelligence_dashboard():
             xaxis_title=None,
         )
         child_container.plotly_chart(fig, key=key + "bar")
+        update_bi_figures_description(key=key + "bar", fig=fig, chart_type="barchart", vars=[variable])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="barchart", date_range="today", vars=[variable]))
+            expander.write(st.session_state.bi_figures_description[key + "bar"])
 
 
     def create_histogram(
@@ -312,6 +334,7 @@ def create_business_intelligence_dashboard():
             index=variable_index,
             key=key + "histogram_variable",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "histogram")
         )
         fig = px.histogram(
             df, variable, color_discrete_sequence=["palegreen"]
@@ -321,10 +344,11 @@ def create_business_intelligence_dashboard():
             margin=dict(t=30, b=0, l=0, r=0),
         )
         child_container.plotly_chart(fig, key=key + "histogram")
+        update_bi_figures_description(key=key + "histogram", fig=fig, chart_type="histogram", vars=[variable])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="histogram", date_range="today", vars=[variable]))
-
+            expander.write(st.session_state.bi_figures_description[key + "histogram"])
+            
     second_row = st.container()
     second_row_col1, second_row_col2, second_row_col3 = second_row.columns([20, 40, 40])
     create_pie_chart(parent_container=second_row_col1, key="6")
@@ -356,6 +380,7 @@ def create_business_intelligence_dashboard():
             index=y_axis_index,
             key=key + "line_y_axis",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "line")
         )
         x_axis = col2.selectbox(
             label="X axis variable",
@@ -363,13 +388,15 @@ def create_business_intelligence_dashboard():
             index=x_axis_index,
             key=key + "line_x_axis",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "line")
         )
         fig = px.line(df, x=x_axis, y=x_axis + "_" + y_axis)
         fig = fig.update_layout(height=280, margin=dict(l=0, r=0, t=30, b=0))
         child_container.plotly_chart(fig, key=key + "line")
+        update_bi_figures_description(key=key + "line", fig=fig, chart_type="linechart", vars=[y_axis, x_axis])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="linechart", date_range="today", vars=[y_axis, x_axis]))
+            expander.write(st.session_state.bi_figures_description[key + "line"])
 
 
     def create_sankey(
@@ -388,14 +415,15 @@ def create_business_intelligence_dashboard():
             index=src_index,
             key=key + "sankey_source",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "sankey")
         )
-
         target = col2.selectbox(
             label="Target",
             options=target_options,
             index=target_index,
             key=key + "sankey_target",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "sankey")
         )
         if source == "SecCode":
             top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
@@ -429,13 +457,11 @@ def create_business_intelligence_dashboard():
             )
         )
         fig = fig.update_layout(height=280, margin=dict(l=0, r=0, t=30, b=0))
-        # fig.update_layout()
         child_container.plotly_chart(fig, key=key + "sankey")
-
-        # Optional automated report section
+        update_bi_figures_description(key=key + "sankey", fig=fig, chart_type="sankey", vars=[source, target])
         if "enable_automated_report" in globals() and enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="sankey", date_range="today", vars=[source, target]))
+            expander.write(st.session_state.bi_figures_description[key + "sankey"])
 
     third_row = st.container()
     third_row_col1, third_row_col2, third_row_col3 = third_row.columns(3)
