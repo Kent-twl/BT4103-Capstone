@@ -69,7 +69,7 @@ def handle_bi_global_filter_change():
 # Define Sidebar Global Filters
 enable_automated_report = st.sidebar.checkbox("Enable Automated Report?", value=True)
 traders = st.sidebar.multiselect(
-    label="Filter for Account", options=list_of_traders, default=list_of_traders, 
+    label="Filter for Trader", options=list_of_traders, default=list_of_traders, 
     on_change=handle_bi_global_filter_change
 )
 df = filter_dataframe(df, "AccCode", traders)
@@ -98,6 +98,28 @@ def update_bi_figures_description(key, fig, chart_type, vars):
         st.session_state.bi_figures_description[key] = fig_description_generator(fig=fig, dash_type="bi", chart_type=chart_type, date_range=f"{st.session_state.date}", vars=vars)
         st.session_state.bi_figures_changed[key] = False
 
+column_names_dict = {
+    'Price': 'Price',
+    'VolumeTraded': 'DoneVolume',
+    'ValueTraded': 'DoneValue',
+    'OrderQuantity': 'Quantity',
+    'OrderValue': 'Value',
+    'BuySell': 'BuySell',
+    'OrderSide': 'OrderSide',
+    'Lifetime': 'Lifetime',
+    'Exchange': 'Exchange',
+    'Destination': 'Destination',
+    'Currency': 'Currency',
+    'OrderType': 'OrderType',
+    'PriceInstruction': 'PriceInstruction',
+    'CreateDate': 'CreateDate',
+    'UpdateDate': 'UpdateDate',
+    'CumulativeNumberOfOrders': 'CumulativeNumberOfOrders',
+    'CumulativeOrderValue': 'CumulativeValue',
+    'CumulativeVolumeTraded': 'CumulativeDoneVolume',
+    'CumulativeValueTraded': 'CumulativeDoneValue',
+    'CumulativeOrderQuantity': 'CumulativeQuantity'
+}
 
 def create_business_intelligence_dashboard():
     # ============================================================
@@ -135,10 +157,10 @@ def create_business_intelligence_dashboard():
         key,
         variable_options=[
             "Price",
-            "DoneVolume",
-            "DoneValue",
-            "Quantity",
-            "Value",
+            "VolumeTraded",
+            "ValueTraded",
+            "OrderQuantity",
+            "OrderValue",
         ],
         variable_index=0,
     ):
@@ -156,7 +178,7 @@ def create_business_intelligence_dashboard():
         fig = make_subplots(rows=1, cols=len(top5_sec_code))
         for i, sec in enumerate(top5_sec_code, start=1):
             fig.add_trace(
-                go.Box(y=df[df["SecCode"] == sec][variable], name=sec), row=1, col=i
+                go.Box(y=df[df["SecCode"] == sec][column_names_dict[variable]], name=sec), row=1, col=i
             )
         fig.update_layout(
             title=f"Box Plots of {variable} by Top 5 SecCode",
@@ -196,7 +218,7 @@ def create_business_intelligence_dashboard():
         fig = make_subplots(rows=1, cols=len(top5_sec_code), specs=specs)
         annotations = []
         for i, sec in enumerate(top5_sec_code, start=1):
-            value_counts = df[df["SecCode"] == sec][variable].value_counts()
+            value_counts = df[df["SecCode"] == sec][column_names_dict[variable]].value_counts()
             fig.add_trace(
                 go.Pie(labels=value_counts.index, values=value_counts, name=sec),
                 row=1,
@@ -252,7 +274,7 @@ def create_business_intelligence_dashboard():
             label_visibility="collapsed",
             on_change=lambda: handle_bi_local_filter_change(key=key + "pie")
         )
-        value_counts = df[variable].value_counts()
+        value_counts = df[column_names_dict[variable]].value_counts()
         fig = px.pie(values=value_counts.values, names=value_counts.index).update_layout(
             title=f"Distribution of {variable}",
             height=200,
@@ -284,7 +306,7 @@ def create_business_intelligence_dashboard():
             label_visibility="collapsed",
             on_change=lambda: handle_bi_local_filter_change(key=key + "bar")
         )
-        value_counts = df[variable].value_counts()
+        value_counts = df[column_names_dict[variable]].value_counts()
         percentages = (value_counts / value_counts.sum() * 100).round(
             2
         )  # Calculate percentages
@@ -320,10 +342,10 @@ def create_business_intelligence_dashboard():
         parent_container,
         key,
         variable_options=[
-            "DoneVolume",
-            "DoneValue",
-            "Quantity",
-            "Value",
+            "VolumeTraded",
+            "ValueTraded",
+            "OrderQuantity",
+            "OrderValue",
         ],
         variable_index=0,
     ):
@@ -337,7 +359,7 @@ def create_business_intelligence_dashboard():
             on_change=lambda: handle_bi_local_filter_change(key=key + "histogram")
         )
         fig = px.histogram(
-            df, variable, color_discrete_sequence=["palegreen"]
+            df, column_names_dict[variable], color_discrete_sequence=["palegreen"]
         ).update_layout(
             title=f"Distribution of {variable}",
             height=200,
@@ -365,10 +387,10 @@ def create_business_intelligence_dashboard():
         x_axis_index=0,
         y_axis_options=[
             "CumulativeNumberOfOrders",
-            "CumulativeValue",
-            "CumulativeDoneVolume",
-            "CumulativeDoneValue",
-            "CumulativeQuantity",
+            "CumulativeOrderValue",
+            "CumulativeVolumeTraded",
+            "CumulativeValueTraded",
+            "CumulativeOrderQuantity",
         ],
         y_axis_index=0,
     ):
@@ -390,7 +412,7 @@ def create_business_intelligence_dashboard():
             label_visibility="collapsed",
             on_change=lambda: handle_bi_local_filter_change(key=key + "line")
         )
-        fig = px.line(df, x=x_axis, y=x_axis + "_" + y_axis)
+        fig = px.line(df, x=x_axis, y=x_axis + "_" + column_names_dict[y_axis])
         fig = fig.update_layout(height=280, margin=dict(l=0, r=0, t=30, b=0))
         child_container.plotly_chart(fig, key=key + "line")
         update_bi_figures_description(key=key + "line", fig=fig, chart_type="linechart", vars=[y_axis, x_axis])
