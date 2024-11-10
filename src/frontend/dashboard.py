@@ -583,7 +583,7 @@ def create_asic_reporting_dashboard():
 
         # Dropdown options for the charts
         pie_chart_options = ['OrderCapacity', 'DirectedWholesale']
-        bar_chart_options = ['IntermediaryID', 'OriginOfOrder', 'OrderTakerUserCode', 'OrderGiver','OrderCapacity', 'DirectedWholesale']
+        bar_chart_options = ['IntermediaryID', 'OriginOfOrder', 'OrderTakerUserCode', 'OrderGiver', 'ExecutionVenue']
         
         # Multi-select for pie chart fields with no default selection
         st.markdown("#### Select fields for Pie Charts:")
@@ -617,6 +617,17 @@ def create_asic_reporting_dashboard():
                 with col2:
                     st.write("Summary Table:")
                     st.dataframe(pie_chart_data)
+                
+                area_description = fig_description_generator(
+                fig=pie_fig, 
+                dash_type="asic", 
+                chart_type="pie", 
+                date_range="today", 
+                vars=field,
+                additional_info={'DirectedWholesale': 'Information that indicates whether the order or transaction was submitted by a wholesale AOP client (i.e. an AOP client with which the market participant has a specific type of market access arrangement) with nondiscretionary routing and execution instructions. ‘Y’ for yes or ‘N’ for no. Default is ‘N’.', 'OrderCapacity': 'describes the capacity in which a market participant has submitted an order or entered into a transaction. Principal (‘P’), agent (‘A’) or both (‘M’)'
+                                }
+                )
+                st.markdown(area_description)
 
         # Generate bar charts for the selected fields
         if selected_bar_fields:
@@ -655,6 +666,17 @@ def create_asic_reporting_dashboard():
                 with col2:
                     st.write("Summary Table:")
                     st.dataframe(bar_chart_data)
+            
+                area_description = fig_description_generator(
+                fig=bar_fig, 
+                dash_type="asic", 
+                chart_type="bar", 
+                date_range="today", 
+                vars=field,
+                additional_info={'ExecutionVenue': 'the venue (licensed market, crossing system or other facility), if any, on which the transaction occurred. Since this is from the Order dataset, it will be null most of the time.', 'IntermediaryID' : 'information that enables identification of an AFS licensee intermediary (i.e. an AFS licensee with which the market participant has a specific type of market access arrangement) that is permitted to provide instructions to place an order or enter into a transaction.', 'OriginOfOrder':'information that assists identification of the person who provided instructions to place an order or enter into a transaction'
+                }
+                )
+                st.markdown(area_description)
     
     #Clause-specific workflow           
     elif chart_type == 'Clause-specific Dashboard':
