@@ -1,4 +1,4 @@
-# Display selected chart
+# Archive Code to display old Dashboard Config
 if selected_chart == "RG 265.130 (Best Execution Obligation)":
     st.subheader(selected_chart)
     # Assuming "Time In Force" is the "TimeInForce" column in the provided schema
@@ -41,3 +41,28 @@ elif selected_chart == "RG 265.74 (Crossing Systems Reporting)":
                         title=selected_chart,
                         labels={"ExecutionVenueCategory": "Execution Venue", "AccCode": "Account Code", "Count of Orders": "Number of Orders"})
     st.plotly_chart(tree_fig)
+
+# Calculate the count and percentage of orders filled immediately
+immediate_fill_count = filtered_df[filtered_df['ExecutionTime'] == 0]['CumulativeNumberOfOrders'].sum()
+total_order_count = filtered_df['CumulativeNumberOfOrders'].sum()
+immediate_fill_percentage = (immediate_fill_count / total_order_count) * 100 if total_order_count > 0 else 0
+
+# Display the metrics with custom styling
+st.markdown("""
+    <div style="text-align: center; padding: 10px; border-radius: 8px; background-color: #4CAF50; color: white;">
+        <h3>Orders Filled Immediately</h3>
+        <h1 style="font-size: 40px;">{:.2f}%</h1>
+        <p style="font-size: 18px;">({:,} out of {:,} orders)</p>
+    </div>
+""".format(immediate_fill_percentage, immediate_fill_count, total_order_count), unsafe_allow_html=True)
+
+# Display a breakdown of orders by ExecutionTime within this specific AccCode
+execution_time_data = filtered_df.groupby('ExecutionTime')['CumulativeNumberOfOrders'].sum().reset_index()
+execution_time_fig = px.bar(
+    execution_time_data, 
+    x="ExecutionTime", 
+    y="CumulativeNumberOfOrders",
+    title="Number of Orders by Time Taken for Execution",
+    labels={"ExecutionTime": "Execution Time", "CumulativeNumberOfOrders": "Number of Orders"}
+)
+st.plotly_chart(execution_time_fig)

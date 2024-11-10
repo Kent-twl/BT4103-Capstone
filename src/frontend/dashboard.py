@@ -15,7 +15,7 @@ import seaborn as sns
 
 ROOT_DIR = os.path.join(os.path.dirname(__file__), "../../")
 sys.path.append(ROOT_DIR)
-# from src.llm.utils.fig_description_generator import fig_description_generator
+from src.llm.fig_description_generator import fig_description_generator
 #functional import
 from src.functions.asic_functions import *
 
@@ -49,10 +49,13 @@ list_of_traders, list_of_currencies, list_of_exchanges, df = load_data()
 # Filter by Date
 df = df[df["CreateDate"].dt.date == st.session_state.date]
 
+if "bi_figures" not in st.session_state:
+    st.session_state.bi_figures = {}
+
 # Sidebar Global Filters
 enable_automated_report = st.sidebar.checkbox("Enable Automated Report?", value=True)
 traders = st.sidebar.multiselect(
-    label="Filter for Trader", options=list_of_traders, default=list_of_traders
+    label="Filter for Account", options=list_of_traders, default=list_of_traders
 )
 df = filter_dataframe(df, "AccCode", traders)
 exchanges = st.sidebar.multiselect(
@@ -78,9 +81,24 @@ def generate_automated_report(fig):
     return "automated reported to be here"
 
 
+if "bi_figures_description" not in st.session_state:
+    st.session_state.bi_figures_description = {}
+if "bi_figures_changed" not in st.session_state:
+    st.session_state.bi_figures_changed = {}
+
+# Callback to handle when the multiselect in the figures have changed
+def handle_bi_local_filter_change(key):
+    st.session_state.bi_figures_changed[key] = True
+
+def update_bi_figures_description(key, fig, chart_type, vars):
+    if st.session_state.bi_figures_changed.get(key, True):
+        st.session_state.bi_figures_description[key] = fig_description_generator(fig=fig, dash_type="bi", chart_type=chart_type, date_range=f"{st.session_state.date}", vars=vars)
+        st.session_state.bi_figures_changed[key] = False
+
+
 def create_business_intelligence_dashboard():
     # ============================================================
-    # Section: Metrics Container
+    # Metrics Container
     # ============================================================
     metrics_container = st.container(border=True)
     (
@@ -90,7 +108,9 @@ def create_business_intelligence_dashboard():
         metrics_container_col4,
         metrics_container_col5,
     ) = metrics_container.columns(5)
-    metrics_container_col1.metric("Total Number of Traders", len(df["AccCode"].unique()))
+    metrics_container_col1.metric(
+        "Total Number of Traders", len(df["AccCode"].unique())
+    )
     metrics_container_col2.metric(
         "Total Number of Distinct Secruity Codes Traded", len(df["SecCode"].unique())
     )
@@ -105,7 +125,7 @@ def create_business_intelligence_dashboard():
     )
 
     # ============================================================
-    # Section: Box Plot and Pie Chart
+    # Box Plot and Pie Chart
     # ============================================================
     def create_box_plot_for_each_security(
         parent_container,
@@ -126,6 +146,7 @@ def create_business_intelligence_dashboard():
             index=variable_index,
             key=key + "boxplot_variable",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "boxplot")
         )
         # Filter df for the top 5 security codes
         top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
@@ -141,9 +162,10 @@ def create_business_intelligence_dashboard():
             showlegend=False,
         )
         child_container.plotly_chart(fig, key=key + "boxplot")
+        update_bi_figures_description(key=key + "boxplot", fig=fig, chart_type="boxplot", vars=[variable, "SecCode"])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(generate_automated_report(fig))
+            expander.write(st.session_state.bi_figures_description[key + "boxplot"])
 
 
     def create_pie_chart_for_each_security(
@@ -165,6 +187,7 @@ def create_business_intelligence_dashboard():
             index=variable_index,
             key=key + "boxplot_variable",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "piechart")
         )
         top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
         specs = [[{"type": "domain"} for i in top5_sec_code]]
@@ -194,10 +217,11 @@ def create_business_intelligence_dashboard():
             margin=dict(t=40, b=0),
             annotations=annotations,
         )
-        child_container.plotly_chart(fig, key=key + "boxplot")
+        child_container.plotly_chart(fig, key=key + "piechart")
+        update_bi_figures_description(key=key + "piechart", fig=fig, chart_type="piechart", vars=[variable, "SecCode"])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(generate_automated_report(fig))
+            expander.write(st.session_state.bi_figures_description[key + "piechart"])
 
     first_row = st.container()
     first_row_col1, first_row_col2 = first_row.columns([40, 60])
@@ -205,7 +229,7 @@ def create_business_intelligence_dashboard():
     create_pie_chart_for_each_security(parent_container=first_row_col2, key="5")
 
     # ============================================================
-    # Section: Box Plot and Pie Chart
+    # Section: Pie Chart, Bar Chart and Histogram
     # ============================================================
     def create_pie_chart(parent_container, key):
         child_container = parent_container.container(border=True)
@@ -225,6 +249,7 @@ def create_business_intelligence_dashboard():
             index=0,
             key=key + "pie_variable",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "pie")
         )
         value_counts = df[variable].value_counts()
         fig = px.pie(values=value_counts.values, names=value_counts.index).update_layout(
@@ -233,9 +258,10 @@ def create_business_intelligence_dashboard():
             margin=dict(t=30, b=0, l=0, r=0),
         )
         child_container.plotly_chart(fig, key=key + "pie")
+        update_bi_figures_description(key=key + "pie", fig=fig, chart_type="piechart", vars=[variable])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(generate_automated_report(fig))
+            expander.write(st.session_state.bi_figures_description[key + "pie"])
 
 
     def create_bar_chart(parent_container, key):
@@ -256,6 +282,7 @@ def create_business_intelligence_dashboard():
             index=0,
             key=key + "bar_var",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "bar")
         )
         value_counts = df[variable].value_counts()
         percentages = (value_counts / value_counts.sum() * 100).round(
@@ -283,9 +310,10 @@ def create_business_intelligence_dashboard():
             xaxis_title=None,
         )
         child_container.plotly_chart(fig, key=key + "bar")
+        update_bi_figures_description(key=key + "bar", fig=fig, chart_type="barchart", vars=[variable])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(generate_automated_report(fig))
+            expander.write(st.session_state.bi_figures_description[key + "bar"])
 
 
     def create_histogram(
@@ -306,6 +334,7 @@ def create_business_intelligence_dashboard():
             index=variable_index,
             key=key + "histogram_variable",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "histogram")
         )
         fig = px.histogram(
             df, variable, color_discrete_sequence=["palegreen"]
@@ -315,10 +344,11 @@ def create_business_intelligence_dashboard():
             margin=dict(t=30, b=0, l=0, r=0),
         )
         child_container.plotly_chart(fig, key=key + "histogram")
+        update_bi_figures_description(key=key + "histogram", fig=fig, chart_type="histogram", vars=[variable])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(generate_automated_report(fig))
-
+            expander.write(st.session_state.bi_figures_description[key + "histogram"])
+            
     second_row = st.container()
     second_row_col1, second_row_col2, second_row_col3 = second_row.columns([20, 40, 40])
     create_pie_chart(parent_container=second_row_col1, key="6")
@@ -335,8 +365,8 @@ def create_business_intelligence_dashboard():
         x_axis_index=0,
         y_axis_options=[
             "CumulativeNumberOfOrders",
-            "Value",
-            "DoneVolume",
+            "CumulativeValue",
+            "CumulativeDoneVolume",
             "CumulativeDoneValue",
             "CumulativeQuantity",
         ],
@@ -350,6 +380,7 @@ def create_business_intelligence_dashboard():
             index=y_axis_index,
             key=key + "line_y_axis",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "line")
         )
         x_axis = col2.selectbox(
             label="X axis variable",
@@ -357,13 +388,15 @@ def create_business_intelligence_dashboard():
             index=x_axis_index,
             key=key + "line_x_axis",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "line")
         )
         fig = px.line(df, x=x_axis, y=x_axis + "_" + y_axis)
         fig = fig.update_layout(height=280, margin=dict(l=0, r=0, t=30, b=0))
         child_container.plotly_chart(fig, key=key + "line")
+        update_bi_figures_description(key=key + "line", fig=fig, chart_type="linechart", vars=[y_axis, x_axis])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(generate_automated_report(fig))
+            expander.write(st.session_state.bi_figures_description[key + "line"])
 
 
     def create_sankey(
@@ -382,14 +415,15 @@ def create_business_intelligence_dashboard():
             index=src_index,
             key=key + "sankey_source",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "sankey")
         )
-
         target = col2.selectbox(
             label="Target",
             options=target_options,
             index=target_index,
             key=key + "sankey_target",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "sankey")
         )
         if source == "SecCode":
             top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
@@ -423,13 +457,11 @@ def create_business_intelligence_dashboard():
             )
         )
         fig = fig.update_layout(height=280, margin=dict(l=0, r=0, t=30, b=0))
-        # fig.update_layout()
         child_container.plotly_chart(fig, key=key + "sankey")
-
-        # Optional automated report section
+        update_bi_figures_description(key=key + "sankey", fig=fig, chart_type="sankey", vars=[source, target])
         if "enable_automated_report" in globals() and enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(generate_automated_report(fig))
+            expander.write(st.session_state.bi_figures_description[key + "sankey"])
 
     third_row = st.container()
     third_row_col1, third_row_col2, third_row_col3 = third_row.columns(3)
@@ -452,12 +484,30 @@ def anom_results(df):
     "UpdateDate_CumulativeQuantity", "UpdateDate_CumulativeValue", "UpdateDate_CumulativeDoneVolume", "UpdateDate_CumulativeDoneValue",
     "CreateDate_CumulativeQuantity", "CreateDate_CumulativeValue", "CreateDate_CumulativeDoneVolume", "CreateDate_CumulativeDoneValue"] 
     anomaly_df = df.reset_index(drop=True)
-    anomaly_df = anomaly_df.drop(axis=1, columns = new_columns)
+    # anomaly_df = anomaly_df.drop(axis=1, columns = new_columns)
     # Get results for outlier analysis
     continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
     # Get results for anomaly detection
     anomalies = anomaly.anomaly_results(anomaly_df.copy())
     return df.copy(), continuous_outlier_df, discrete_outlier_df, anomalies
+
+# Function for applying filters and caching the results
+def apply_filters(anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies):
+    # Apply filters for all results so that they can be displayed
+    temp = anomaly_df.copy()
+    temp = filter_dataframe(temp, "AccCode", traders)
+    temp = filter_dataframe(temp, "Exchange", exchanges)
+    temp = filter_dataframe(temp, "Currency", currencies)
+    continuous_outlier_df = filter_dataframe(continuous_outlier_df, "AccCode", traders)
+    continuous_outlier_df = filter_dataframe(continuous_outlier_df, "Exchange", exchanges)
+    continuous_outlier_df = filter_dataframe(continuous_outlier_df, "Currency", currencies)
+    discrete_outlier_df = filter_dataframe(discrete_outlier_df, "AccCode", traders)
+    discrete_outlier_df = filter_dataframe(discrete_outlier_df, "Exchange", exchanges)
+    discrete_outlier_df = filter_dataframe(discrete_outlier_df, "Currency", currencies)
+    anomalies = filter_dataframe(anomalies, "AccCode", traders)
+    anomalies = filter_dataframe(anomalies, "Exchange", exchanges)
+    anomalies = filter_dataframe(anomalies, "Currency", currencies)
+    return temp, continuous_outlier_df, discrete_outlier_df, anomalies
 
 # Function for displaying the results of anomaly detection
 def show_anom_scatter(anomaly_df, anomalies, selected_field):
@@ -476,14 +526,42 @@ def show_anom_scatter(anomaly_df, anomalies, selected_field):
     plt.ylabel('Quantity')
     return plt
 
+# Function to display anomalies with Plotly
+def show_anom_scatter_plotly(anomaly_df, anomalies, selected_field):
+    # Filter out unique values for selected fields and prepare data
+    anomaly_df = anomaly_df[['Price', 'Quantity', selected_field]].drop_duplicates()
+    anomalies = anomalies[['Price', 'Quantity']].drop_duplicates()
+    # Create the main scatter plot for anomaly data
+    fig = go.Figure()
+    for field_value in anomaly_df[selected_field].unique():
+        subset = anomaly_df[anomaly_df[selected_field] == field_value]
+        fig.add_trace(go.Scatter(x=subset["Price"], y=subset["Quantity"], mode='markers', 
+                                 name=str(field_value), marker=dict(size=4),showlegend=True))
+    # Overlay anomalies with a red 'X' marker 
+    fig.add_trace(go.Scatter(x=anomalies['Price'], y=anomalies['Quantity'],
+                    mode='markers', marker=dict(symbol="x", color="red", size=10),
+                    name="Anomalies", legendrank=1))
+    fig.update_layout(
+        title="Anomalies Detected in Provided Data",
+        xaxis_title="Price",
+        yaxis_title="Quantity"
+    )
+    return fig, anomalies
+
 # Function to display the anomaly detection dashboard
 def create_anomaly_detection_dashboard():
+    # Load full dataset for selected date
+    anomaly_df = pd.read_excel("final_data.xlsx")
+    anomaly_df = anomaly_df[anomaly_df["CreateDate"].dt.date == st.session_state.date]
     st.header("Anomaly Detection Dashboard")
     # No dashboard if there is no data
-    if df.empty:
-        st.write("There is no data for the selected date.")
+    if anomaly_df.empty:
+        st.write("There is no data for the selected date and filters.")
         return
-    anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies = anom_results(df)
+    # Get anomaly detection results
+    anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies = anom_results(anomaly_df)
+    # Filter results based on current filter options
+    temp, continuous_outlier_df, discrete_outlier_df, anomalies = apply_filters(anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies)
     # Outlier analysis
     with st.container(border=True):
         st.subheader("Outlier Analysis Results")
@@ -494,6 +572,8 @@ def create_anomaly_detection_dashboard():
             # Display dataframe of flagged rows if any
             if not continuous_outlier_df.empty:
                 st.dataframe(continuous_outlier_df, height = 300)
+                # Brief description of outliers
+                st.write(f"There are {len(continuous_outlier_df)} continuous outliers identified in the data. These points have an absolute z-score larger than 3 in their respective columns, and could be signs of order activity that deviates from the norm or an erroneous entry.")
             else:
                 st.write("There are no continuous outliers identified.")
         with col2:
@@ -501,34 +581,47 @@ def create_anomaly_detection_dashboard():
             # Display dataframe of flagged rows if any
             if not discrete_outlier_df.empty:
                 st.dataframe(discrete_outlier_df, height = 300)
+                # Brief description of outliers
+                st.write(f"There are {len(discrete_outlier_df)} discrete outliers identified in the data. The value of these points have a significantly lower proportion than the rest of the data in their respective column, and could mean an unusual order or a new player in the market.")
             else:
                 st.write("There are no discrete outliers identified.")
     # Anomaly detection
     with st.container(border=True):
         st.subheader("Anomaly Detection Results")
         st.divider()
-        col1, col2 = st.columns(2)
-        with col1:
-            # User option to colour the scatterplot
-            st.write("Please select the field you would like to see the data coloured by.")
-            # Relevant discrete variables only
-            scatter_options = ['SecCode', 'AccCode','Side', 'BuySell', 'OrderSide', 'Exchange', 'Destination', 'Lifetime', 'OrderGiver', 'OrderTakerUserCode']
-            selected_field = st.selectbox('Field: ', scatter_options)
-            # Replot the scatterplot
-            if selected_field:
-                fig = show_anom_scatter(anomaly_df, anomalies, selected_field)
-            else:
-                fig = show_anom_scatter(anomaly_df, anomalies, 'SecCode')
-            st.pyplot(fig)
-        with col2:
-            # Display dataframe of anomalies if any
-            st.write("Anomalous Trades")
-            if not anomalies.empty:
-                st.dataframe(anomalies, height = 500)
-            else:
-                st.write("There are no anomalies identified.")
-        # Generate LLM description and insights based on graph and anomalies identified
-        # st.write(fig_description_generator(fig, "anomaly", "scatter", anomalies))
+        # Check if there is any data after filters applied
+        if anomalies.empty:
+            st.write("There are no anomalies identified.")
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                # User option to colour the scatterplot
+                st.write("Please select the field you would like to see the data coloured by.")
+                # Relevant discrete variables only
+                scatter_options = ['SecCode', 'AccCode','Side', 'BuySell', 'OrderSide', 'Exchange', 'Destination', 'Lifetime', 'OrderGiver', 'OrderTakerUserCode']
+                selected_field = st.selectbox('Field: ', scatter_options)
+                # Replot the scatterplot
+                if selected_field:
+                    fig, new_anoms = show_anom_scatter_plotly(temp, anomalies, selected_field)
+                else:
+                    fig, new_anoms = show_anom_scatter_plotly(temp, anomalies, 'SecCode')
+                # Display plot
+                st.plotly_chart(fig)
+            with col2:
+                # Display dataframe of anomalies if any
+                st.write("Anomalous Trades")
+                if not anomalies.empty:
+                    st.dataframe(anomalies, height = 500)
+                else:
+                    st.write("There are no anomalies identified.")
+            # Generate LLM description and insights based on graph and anomalies identified
+            anom_description = fig_description_generator(
+                fig=fig, 
+                dash_type="anomaly", 
+                chart_type="scatter", 
+                vars=[selected_field],
+                additional_info = anomalies)
+            st.write(anom_description)
 
 def create_asic_reporting_dashboard():
     #User Selection for Dashboard Type
@@ -621,7 +714,7 @@ def create_asic_reporting_dashboard():
             "RG 265.130 (Best Execution Obligation)",
             "RG 265.12 (Supervision of Market Participants)",
             "RG 265.51 (Suspicious Activity Reporting)",
-            "RG 265.74 (Crossing Systems Reporting)"
+            "RG 265.293 (Crossing Systems Reporting)"
         ]
         selected_chart = st.selectbox("Select the Reporting Standard you want to view:", asic_chart_options)
         
@@ -675,6 +768,23 @@ def create_asic_reporting_dashboard():
 
             # Display the line graph in Streamlit
             st.plotly_chart(area_fig)
+
+            # Generate and display description for the area chart
+            area_description = fig_description_generator(
+                fig=area_fig, 
+                dash_type="asic", 
+                chart_type="area", 
+                date_range="today", 
+                vars=["ExecutionTime", "CumulativeNumberOfOrders"],
+                additional_info={
+                    'Clause': 'Under Rule 3.8.1, a market participant must take reasonable steps when handling and executing an order in relevant products to obtain the bestoutcome for its client. For a retail client, the best outcome means the best total consideration, taking into account client instructions. For wholesale clients, other outcomes may be relevant—including speed, likelihood ofexecution and any other relevant considerations',
+                    'Generic Description': 'The trader must execute trades at the earliest if possible. If a trader typically takes a long time to execute a trade, he might be in violation of the clause, as they are not acting in the best interest of their client',
+                    'How the metric is calculated':'Metric for this standard will include the distribution of execution speed, which will show if the traders are executing the trades in the shortest time possible',
+                    'Account Code': 'This charts shows the distribution for all traders in the company',
+                    'Other Info': 'There is an option to drill down to trader level at the option bar above the chart',
+                },
+            )
+            st.markdown(area_description)
             
             # Show additional details if a specific AccCode is selected
             if selected_acccode != "All":
@@ -685,30 +795,22 @@ def create_asic_reporting_dashboard():
                                                 labels={"CreateDate": "Timestamp", "CumulativeNumberOfOrders": " Number of Orders"})
                 st.plotly_chart(cumulative_orders_fig)
                 
-                # # Calculate the count and percentage of orders filled immediately
-                # immediate_fill_count = filtered_df[filtered_df['ExecutionTime'] == 0]['CumulativeNumberOfOrders'].sum()
-                # total_order_count = filtered_df['CumulativeNumberOfOrders'].sum()
-                # immediate_fill_percentage = (immediate_fill_count / total_order_count) * 100 if total_order_count > 0 else 0
-
-                # # Display the metrics with custom styling
-                # st.markdown("""
-                #     <div style="text-align: center; padding: 10px; border-radius: 8px; background-color: #4CAF50; color: white;">
-                #         <h3>Orders Filled Immediately</h3>
-                #         <h1 style="font-size: 40px;">{:.2f}%</h1>
-                #         <p style="font-size: 18px;">({:,} out of {:,} orders)</p>
-                #     </div>
-                # """.format(immediate_fill_percentage, immediate_fill_count, total_order_count), unsafe_allow_html=True)
-
-                # # Display a breakdown of orders by ExecutionTime within this specific AccCode
-                # execution_time_data = filtered_df.groupby('ExecutionTime')['CumulativeNumberOfOrders'].sum().reset_index()
-                # execution_time_fig = px.bar(
-                #     execution_time_data, 
-                #     x="ExecutionTime", 
-                #     y="CumulativeNumberOfOrders",
-                #     title="Number of Orders by Time Taken for Execution",
-                #     labels={"ExecutionTime": "Execution Time", "CumulativeNumberOfOrders": "Number of Orders"}
-                # )
-                # st.plotly_chart(execution_time_fig)
+                #Generate and display description for cumulative orders chart
+                cumulative_orders_description = fig_description_generator(
+                    fig=cumulative_orders_fig, 
+                    dash_type="asic", 
+                    chart_type="bar", 
+                    date_range="today", 
+                    vars=["CreateDate", "CumulativeNumberOfOrders"],
+                    additional_info={
+                        'Clause': 'Under Rule 3.8.1, a market participant must take reasonable steps when handling and executing an order in relevant products to obtain the bestoutcome for its client. For a retail client, the best outcome means the best total consideration, taking into account client instructions. For wholesale clients, other outcomes may be relevant—including speed, likelihood ofexecution and any other relevant considerations',
+                        'Generic Description': 'This chart will show the trades done throughout the day. If the trades are clustered around a specific timestamp, it may signify that the trader is not done in the best interest ofthe client',
+                        'How the metric is calculated':'Metric for this standard will include the distribution of orders throughout the day',
+                        'Account Code': 'This charts shows the distribution for the specific accountcode in the selected in the dropdown menu',
+                        'Other Info': 'There is an option to drill down to trader level at the option bar above the chart',
+                        },
+                )
+                st.markdown(cumulative_orders_description)
 
                 # Show additional data details in a table
                 st.write("Additional data details:")
@@ -745,6 +847,23 @@ def create_asic_reporting_dashboard():
                                         title="Done Volume Over Time",
                                         labels={"CreateDate": "Date", "DoneVolume": "Done Volume"})
                 st.plotly_chart(done_volume_fig)
+
+                                #Generate and display description for cumulative orders chart
+                done_volume_description = fig_description_generator(
+                    fig=done_volume_fig, 
+                    dash_type="asic", 
+                    chart_type="line", 
+                    date_range="today", 
+                    vars=["CreateDate", "DoneVolume"],
+                    additional_info={
+                        'Clause': 'The ASIC Committee is responsible for supervising market participants, market operators and other prescribed entities for compliance with the market integrity rules.',
+                        'Generic Description': 'The ASIC Committee requires trading activity transparency for the day, and the amount of trade done in the day is shown in accordance to that requirement.',
+                        'How the metric is calculated':'This metric will provide the user with volume traded transparency with regards to the activity by the trader across the day',
+                        'Account Code': 'This charts shows the distribution for the specific accountcode in the selected in the dropdown menu',
+                        'Other Info': 'N.A.',
+                        },
+                )
+                st.markdown(done_volume_description)
                 
                 # Display cumulative value over time for the selected AccCode
                 cumulative_value = filtered_df[['CreateDate', 'Value']].drop_duplicates().sort_values(by='CreateDate')
@@ -752,6 +871,22 @@ def create_asic_reporting_dashboard():
                                     title="Order Value Over Time",
                                     labels={"CreateDate": "Date", "Value": "Order Value"})
                 st.plotly_chart(value_fig)
+
+                value_description = fig_description_generator(
+                    fig=value_fig, 
+                    dash_type="asic", 
+                    chart_type="line", 
+                    date_range="today", 
+                    vars=["CreateDate", "Value"],
+                    additional_info={
+                        'Clause': 'The ASIC Committee is responsible for supervising market participants, market operators and other prescribed entities for compliance with the market integrity rules.',
+                        'Generic Description': 'The ASIC Committee requires trading activity transparency for the day, and the value of trades done in the day is shown in accordance to that requirement.',
+                        'How the metric is calculated':'This metric will provide the user with value traded transparency with regards to the activity by the trader across the day',
+                        'Account Code': 'This charts shows the distribution for the specific accountcode in the selected in the dropdown menu',
+                        'Other Info': 'N.A.',
+                        },
+                )
+                st.markdown(value_description)
                 
                 # Display a breakdown of average done volume per order type within this specific AccCode
                 avg_done_volume_data = filtered_df.groupby('OrderType')['DoneVolume'].mean().reset_index()
@@ -759,10 +894,26 @@ def create_asic_reporting_dashboard():
                                             title="Average Done Volume by Order Type",
                                             labels={"OrderType": "Order Type", "DoneVolume": "Average Done Volume"})
                 st.plotly_chart(avg_done_volume_fig)
+
+                avg_done_volume_description = fig_description_generator(
+                    fig=avg_done_volume_fig, 
+                    dash_type="asic", 
+                    chart_type="bar", 
+                    date_range="today", 
+                    vars=["OrderType", "DoneVolume"],
+                    additional_info={
+                        'Clause': 'The ASIC Committee is responsible for supervising market participants, market operators and other prescribed entities for compliance with the market integrity rules.',
+                        'Generic Description': 'The ASIC Committee requires trading activity transparency for the day, and the volume traded for each order type is shown in accordance to that requirement.',
+                        'How the metric is calculated':'This metric will provide the user with average volume traded for each order type of the day',
+                        'Account Code': 'This charts shows the distribution for the specific accountcode in the selected in the dropdown menu',
+                        'Other Info': 'N.A.',
+                        },
+                )     
+                st.markdown(avg_done_volume_description)           
                 
                 # Show additional data details in a table
                 st.write("Additional data details:")
-                st.dataframe(filtered_df[['AccCode','CreateDate','OrderSide', 'OrderType', 'DoneVolume', 'Price', 'Quantity', 'ExecutionVenue']])
+                st.dataframe(filtered_df[['AccCode','CreateDate', 'OrderSide', 'OrderType', 'DoneVolume', 'Price', 'Quantity', 'ExecutionVenue']])
 
         elif selected_chart == "RG 265.51 (Suspicious Activity Reporting)":
             # User input for large order threshold
@@ -787,6 +938,23 @@ def create_asic_reporting_dashboard():
                             barmode='group', title=f"RG 265.51 (Suspicious Activity Reporting) - {selected_acccode if selected_acccode != 'All' else 'All Accounts'}",
                             labels={"DoneVolume": "Total Done Volume", "AccCode": "Account Code", "OrderSizeCategory": "Order Size"})
             st.plotly_chart(bar_fig)
+
+            bar_description = fig_description_generator(
+                fig=bar_fig, 
+                dash_type="asic", 
+                chart_type="bar", 
+                date_range="today", 
+                vars=["AccCode", "DoneVolume"],
+                additional_info={
+                    'Clause': 'Breaches (or likely breaches) of market integrity rules may constitute reportable situations for AFS licensees under s912D. If certain breaches of the market integrity rules are required to be reported under s912DAA, market participants need to report them to ASIC.',
+                    'Generic Description': f'This chart is shown to portray the number of orders deemed large and the number of orders that are normal based on the threshold: {threshold}. This is to serve as an indicator of market manipulation, where a trader may be executing large amount of trades to deliberate manipulate market sentiment.',
+                    'How the metric is calculated':'This metric will provide the user with the proportion of trades that are flagged as large orders, which may be an indicator of a breach of market integrity rules.',
+                    'Account Code': 'This charts shows the distribution for the all accountcode in the data',
+                    'Other Info': f'The threshold of large order for this analysis is defined as {threshold}',
+                    },
+            )     
+            st.markdown(bar_description)   
+
             
             # Show additional details if a specific AccCode is selected
             if selected_acccode != "All":
@@ -798,6 +966,22 @@ def create_asic_reporting_dashboard():
                                         barmode='stack', title="Order Types within Selected Account Code",
                                         labels={"OrderType": "Order Type", "Count": "Number of Orders", "OrderSizeCategory": "Order Size Category"})
                 st.plotly_chart(order_type_fig)
+
+                order_type_description = fig_description_generator(
+                    fig=order_type_fig, 
+                    dash_type="asic", 
+                    chart_type="bar", 
+                    date_range="today", 
+                    vars=["OrderType", "Count"],
+                    additional_info={
+                        'Clause': 'Breaches (or likely breaches) of market integrity rules may constitute reportable situations for AFS licensees under s912D. If certain breaches of the market integrity rules are required to be reported under s912DAA, market participants need to report them to ASIC.',
+                        'Generic Description': 'This chart should provide the user with a distribution of order type being traded for further analysis. There may be instances where one order type is traded excessively to manipulate the market.',
+                        'How the metric is calculated':'This metric will provide the user with the count of each type of order.',
+                        'Account Code': 'This charts shows the distribution for the all accountcode in the data',
+                        'Other Info': f'The threshold of large order for this analysis is defined as {threshold}',
+                        },
+                )     
+                st.markdown(order_type_description)   
                 
                 # Display total value of orders within this specific account code
                 value_data = filtered_df.groupby('OrderSizeCategory')['Value'].sum().reset_index()
@@ -805,12 +989,28 @@ def create_asic_reporting_dashboard():
                                 title="Total Order Value within Selected Account Code",
                                 labels={"OrderSizeCategory": "Order Size Category", "Value": "Total Order Value"})
                 st.plotly_chart(value_fig)
+
+                value_description = fig_description_generator(
+                fig=value_fig, 
+                dash_type="asic", 
+                chart_type="bar", 
+                date_range="today", 
+                vars=["OrderSizeCategory", "Value"],
+                additional_info={
+                    'Clause': 'Breaches (or likely breaches) of market integrity rules may constitute reportable situations for AFS licensees under s912D. If certain breaches of the market integrity rules are required to be reported under s912DAA, market participants need to report them to ASIC.',
+                    'Generic Description': 'This chart should provide the user with an indication of the value of the baskets of large trade volume and normal trade volume. If the large trade volume is of high value it may indicate an attempt to manipulate the market.',
+                    'How the metric is calculated':'This metric will provide the user with the value of each trade order category.',
+                    'Account Code': 'This charts shows the distribution for the specified accountcode',
+                    'Other Info': f'The threshold of large order for this analysis is defined as {threshold}',
+                    },
+                )     
+                st.markdown(value_description)   
                 
                 # Show a table for additional data if needed
                 st.write("Additional data details:")
                 st.dataframe(filtered_df[['AccCode','OrderNo','OrderSide','OrderType', 'DoneVolume', 'Price', 'Quantity', 'Value', 'ExecutionVenue']])
 
-        elif selected_chart == "RG 265.74 (Crossing Systems Reporting)":
+        elif selected_chart == "RG 265.293 (Crossing Systems Reporting)":
             st.subheader(selected_chart)
             # Dropdown to select a specific exchange system
             unique_exchange_systems = df["ExecutionVenueCategory"].unique()
@@ -828,6 +1028,22 @@ def create_asic_reporting_dashboard():
                                 title=f"{selected_chart} - {selected_exchange_system if selected_exchange_system != 'All' else 'All Systems'}",
                                 labels={"ExecutionVenueCategory": "Execution Venue", "AccCode": "Account Code", "Count of Orders": "Number of Orders"})
             st.plotly_chart(tree_fig)
+
+            tree_description = fig_description_generator(
+            fig=tree_fig, 
+            dash_type="asic", 
+            chart_type="treemap", 
+            date_range="today", 
+            vars=["ExecutionVenueCategory", "AccCode"],
+            additional_info={
+                'Clause': 'A market participant that operates a crossing system must lodge a crossing system report with ASIC.',
+                'Generic Description': 'This chart should provide the user with a number of trades executed in the crossing system by their traders as required by ASIC.',
+                'How the metric is calculated':'This metric will provide the user with the number of trade executed by each trader under their jurisdiction in a crossing system.',
+                'Account Code': 'This charts shows data for the all accountcode in the data',
+                'Other Info': 'N.A.',
+                },
+            )     
+            st.markdown(tree_description)  
             
             # Show additional details if a specific system is selected
             if selected_exchange_system != "All":
@@ -839,6 +1055,22 @@ def create_asic_reporting_dashboard():
                                         barmode='stack', title="Order Types within Selected Exchange System",
                                         labels={"AccCode": "Account Code", "Count": "Number of Orders", "OrderType": "Order Type"})
                 st.plotly_chart(order_type_fig)
+
+                order_type_description = fig_description_generator(
+                    fig=order_type_fig, 
+                    dash_type="asic", 
+                    chart_type="bar", 
+                    date_range="today", 
+                    vars=["AccCode", "Count"],
+                    additional_info={
+                        'Clause': 'A market participant that operates a crossing system must lodge a crossing system report with ASIC.',
+                        'Generic Description': 'This chart should provide the user with the proportion of order type for trade in the crossing system by their traders as required by ASIC.',
+                        'How the metric is calculated':f'This metric will provide the user with the proportion of order type for trade executed by each trader under their jurisdiction for {selected_exchange_system}.',
+                        'Account Code': 'This charts shows data for the all accountcode in the data',
+                        'Other Info': 'N.A.',
+                        },
+                )     
+                st.markdown(order_type_description) 
                 
                 # Display total done volume within this specific exchange system
                 volume_data = filtered_df.groupby('AccCode')['DoneVolume'].sum().reset_index()
@@ -846,6 +1078,22 @@ def create_asic_reporting_dashboard():
                                     title="Total Done Volume within Selected Exchange System",
                                     labels={"AccCode": "Account Code", "DoneVolume": "Done Volume"})
                 st.plotly_chart(volume_fig)
+
+                volume_description = fig_description_generator(
+                    fig=volume_fig, 
+                    dash_type="asic", 
+                    chart_type="bar", 
+                    date_range="today", 
+                    vars=["AccCode", "DoneVolume"],
+                    additional_info={
+                        'Clause': 'A market participant that operates a crossing system must lodge a crossing system report with ASIC.',
+                        'Generic Description': 'This chart should provide the user with volume of trades executed in the crossing system by their traders as required by ASIC.',
+                        'How the metric is calculated':f'This metric will provide the user with the volume of trade executed by each trader under their jurisdiction for {selected_exchange_system}.',
+                        'Account Code': 'This charts shows data for the all accountcode in the data',
+                        'Other Info': 'N.A.',
+                        },
+                )     
+                st.markdown(volume_description) 
                 
                 # Show a table for additional data if needed
                 st.write("Additional data details:")
@@ -861,150 +1109,3 @@ if "Anomaly Detection" in st.session_state.selections:
 if "ASIC Reporting" in st.session_state.selections:
     create_asic_reporting_dashboard()
 
-
-
-# ============================================================
-# Section: Letting users choose the chart type (Deprecated)
-# ============================================================
-
-# chart_type_1 = container1.selectbox(label="Chart type", options=["Line Chart", "Pie Chart"], index=0, label_visibility="collapsed")
-# chart_type_2 = container2.selectbox(label="Chart type", options=["Line Chart", "Pie Chart"], index=1, label_visibility="collapsed")
-
-# match chart_type_1:
-#     case "Line Chart": create_line_chart(container1, "1")
-#     case "Pie Chart": create_pie_chart(container1, "1")
-
-# match chart_type_2:
-#     case "Line Chart": create_line_chart(container2, "2")
-#     case "Pie Chart": create_pie_chart(container2, "2")
-
-
-# col1, col2, col3 = st.columns(3)  # Columns are containers
-# # overview_container = st.container(border=True, key="overview_container")
-# metrics_container = st.container(key="metrics_container")
-
-
-# overview_container = col1.container(border=True)
-# overview_expander = overview_container.expander("More Details")
-# overview_expander.write("ZM insert your report here")
-
-
-# with col1:
-
-
-#     # with overview_container:
-#     with metrics_container:
-#         col_a, col_b, col_c = st.columns(3)
-#         with col_a:
-#             st.metric("Total Number of Orders", "5K")
-
-#         with col_b:
-#             st.metric("Total Volume of Orders", "40.39M")
-
-#         with col_c:
-#             st.metric("Total Value of Orders", "$33.28M")
-#     with st.expander("More Details"):
-#         st.write('''
-#             ZM insert your report here.
-#         ''')
-
-# st.header("Selections")
-# st.write(f"Your selections are {st.session_state.selections}.")
-
-# def columns_array_creator(total_number, max_column_per_row):
-#     columns_array = []
-#     count = 0
-#     while(count + max_column_per_row < total_number):
-#         count += max_column_per_row
-#         columns_array.append(max_column_per_row)
-#     if(total_number - count > 0):
-#         columns_array.append(total_number - count)
-#     return columns_array
-
-# selections = st.session_state.selections
-# unique_values = set(item.split(" - ")[0] for item in selections)
-# unique_count = len(unique_values)
-
-# outer_columns_array = columns_array_creator(unique_count, 2)
-# st.write(outer_columns_array)
-
-
-# def create_sankey(
-#     parent_container,
-#     key,
-#     src_options=["SecCode", "Exchange"],
-#     src_index=0,
-#     target_options=["BuySell", "Destination"],
-#     target_index=0,
-# ):
-#     # Create child container
-#     child_container = parent_container.container()
-
-#     # Create selection boxes
-#     source = child_container.selectbox(
-#         label="Source",
-#         options=src_options,
-#         index=src_index,
-#         key=key + "sankey_source",
-#         label_visibility="collapsed",
-#     )
-
-#     target = child_container.selectbox(
-#         label="Target",
-#         options=target_options,
-#         index=target_index,
-#         key=key + "sankey_target",
-#         label_visibility="collapsed",
-#     )
-
-#     # Filter data based on source selection
-#     if source == "SecCode":
-#         top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
-#         df_filtered = df[df["SecCode"].isin(top5_sec_code)]
-#     else:
-#         df_filtered = df
-
-#     # Create aggregation based on selected source and target
-#     agg_df = df_filtered.groupby([source, target]).size().reset_index(name="Count")
-
-#     # Prepare data for Sankey diagram
-#     labels = list(agg_df[source].unique()) + list(df_filtered[target].unique())
-
-#     # Create source index mapping
-#     source_index = {code: idx for idx, code in enumerate(agg_df[source].unique())}
-
-#     # Initialize lists for Sankey data
-#     sources = []
-#     targets = []
-#     values = []
-
-#     # Fill source, target, and values
-#     for _, row in agg_df.iterrows():
-#         sources.append(source_index[row[source]])
-#         targets.append(labels.index(row[target]))
-#         values.append(row["Count"])
-
-#     # Create Sankey diagram
-#     fig = go.Figure(
-#         go.Sankey(
-#             node=dict(
-#                 pad=15,
-#                 thickness=20,
-#                 line=dict(color="black", width=0.5),
-#                 label=labels
-#             ),
-#             link=dict(
-#                 source=sources,
-#                 target=targets,
-#                 value=values
-#             )
-#         )
-#     )
-
-#     # Display the chart
-#     child_container.plotly_chart(fig, key=key + "sankey")
-
-#     # Optional automated report section
-#     if 'enable_automated_report' in globals() and enable_automated_report:
-#         expander = child_container.expander("View automated report")
-#         expander.write(generate_automated_report(fig))

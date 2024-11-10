@@ -104,7 +104,7 @@ def isolation_forest(df, axs):
     # One hot encoding for discrete columns
     features = pd.get_dummies(subset, columns=DISCRETE_COLUMNS)
     # Create model
-    model = IsolationForest(n_estimators=100, contamination=PROPORTION * 3, random_state=42)
+    model = IsolationForest(n_estimators=100, contamination=0.2, random_state=42)
     # Fit model to data
     model.fit(features)
     # Predict which points are anomalies
@@ -114,7 +114,7 @@ def isolation_forest(df, axs):
     anomalies = features[features['anomaly'] == -1]
     # Determine features causing the anomalies to be flagged out
     anomalies = get_top_features_if(model, features, anomalies)
-    print(f"Number of Anomalies Detected: {len(anomalies)}")
+    print(f"Number of IF Anomalies Detected: {len(anomalies)}")
     # show_scatterplots(subset, "Isolation Forest", 0, axs)
     return anomalies
 
@@ -130,7 +130,7 @@ def ocsvm(df, axs):
     scaler = StandardScaler()
     features[CONTINUOUS_COLUMNS] = scaler.fit_transform(features[CONTINUOUS_COLUMNS])
     # Create model
-    model = svm.OneClassSVM(nu=PROPORTION, kernel="rbf", gamma=0.01) 
+    model = svm.OneClassSVM(nu=0.1, kernel="rbf", gamma=0.01) 
     # Fit model to data
     model.fit(features)
     # Predict which points are anomalies
@@ -138,7 +138,7 @@ def ocsvm(df, axs):
     subset['anomaly'] = features['anomaly']
     # Identify anomalies
     anomalies = features[features['anomaly'] == -1]
-    print(f"Number of Anomalies Detected: {len(anomalies)}")
+    print(f"Number of OCSVM Anomalies Detected: {len(anomalies)}")
     # show_scatterplots(subset, "One-Class SVM", 1, axs)
     return anomalies
 
@@ -157,12 +157,12 @@ def gmm(df, axs):
     # Predict which points are anomalies
     log_likelihood = model.score_samples(features)
     features['log_likelihood'] = log_likelihood
-    threshold = np.percentile(log_likelihood, PROPORTION * 100)
+    threshold = np.percentile(log_likelihood, 5)
     # Identify anomalies
     anomalies = features[features['log_likelihood'] < threshold]
     features['anomaly'] = np.where(features['log_likelihood'] < threshold, -1, 1)
     subset['anomaly'] = features['anomaly']
-    print(f"Number of Anomalies Detected: {len(anomalies)}")
+    print(f"Number of GMM Anomalies Detected: {len(anomalies)}")
     # show_scatterplots(subset, "Gaussian Mixture Model", 2, axs)
     return anomalies
 
