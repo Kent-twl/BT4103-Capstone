@@ -19,6 +19,11 @@ from src.llm.fig_description_generator import fig_description_generator
 #functional import
 from src.functions.asic_functions import *
 
+# ============================================================
+# Set up
+# ============================================================
+
+# Load data from source and feature engineer required columns
 @st.cache_data  # Cache the data loading so that every time the filter changes, data won't be loaded again
 def load_data(file_path="final_data.xlsx"):
     df = pd.read_excel(file_path)
@@ -38,7 +43,7 @@ def load_data(file_path="final_data.xlsx"):
     df["ExecutionVenueCategory"] = df["ExecutionVenue"].apply(classify_execution_venue)
     return df["AccCode"].unique(), df["Currency"].unique(), df["Exchange"].unique(), df
 
-
+# Filter dataframe based on user-selected options
 def filter_dataframe(df, column, options):
     return df[df[column].isin(options)]
 
@@ -49,38 +54,72 @@ list_of_traders, list_of_currencies, list_of_exchanges, df = load_data()
 # Filter by Date
 df = df[df["CreateDate"].dt.date == st.session_state.date]
 
-if "bi_figures" not in st.session_state:
-    st.session_state.bi_figures = {}
+# Initialise session states for BI dashboard
+if "bi_figures_description" not in st.session_state:
+    st.session_state.bi_figures_description = {}
+if "bi_figures_changed" not in st.session_state:
+    st.session_state.bi_figures_changed = {}
 
-# Sidebar Global Filters
+# Callback to handle when the global filters in the sidebar has changed
+def handle_bi_global_filter_change():
+    for key in st.session_state.bi_figures_changed:
+        st.session_state.bi_figures_changed[key] = True
+
+
+# Define Sidebar Global Filters
 enable_automated_report = st.sidebar.checkbox("Enable Automated Report?", value=True)
 traders = st.sidebar.multiselect(
-    label="Filter for Account", options=list_of_traders, default=list_of_traders
+    label="Filter for Trader", options=list_of_traders, default=list_of_traders, 
+    on_change=handle_bi_global_filter_change
 )
 df = filter_dataframe(df, "AccCode", traders)
 exchanges = st.sidebar.multiselect(
-    label="Filter for Exchange", options=list_of_exchanges, default=list_of_exchanges
+    label="Filter for Exchange", options=list_of_exchanges, default=list_of_exchanges, 
+    on_change=handle_bi_global_filter_change
 )
 df = filter_dataframe(df, "Exchange", exchanges)
 currencies = st.sidebar.multiselect(
-    label="Filter for Currency", options=list_of_currencies, default=list_of_currencies
+    label="Filter for Currency", options=list_of_currencies, default=list_of_currencies,
+    on_change=handle_bi_global_filter_change
 )
 df = filter_dataframe(df, "Currency", currencies)
 
 
-def generate_description(fig, dash_type="bi", chart_type="line", vars=[]):
-    # Generate text in the LLM based on fig
-    ret_output = fig_description_generator(fig, dash_type, chart_type, vars)
+# ============================================================
+# Dashboards
+# ============================================================
 
-    # Return the text
-    return ret_output
+# Callback to handle when the multiselect in the figures have changed
+def handle_bi_local_filter_change(key):
+    st.session_state.bi_figures_changed[key] = True
 
+def update_bi_figures_description(key, fig, chart_type, vars):
+    if st.session_state.bi_figures_changed.get(key, True):
+        st.session_state.bi_figures_description[key] = fig_description_generator(fig=fig, dash_type="bi", chart_type=chart_type, date_range=f"{st.session_state.date}", vars=vars)
+        st.session_state.bi_figures_changed[key] = False
 
-# Dummy function for generating_automated_report
-def generate_automated_report(fig):
-    return "automated reported to be here"
-
-
+column_names_dict = {
+    'Price': 'Price',
+    'VolumeTraded': 'DoneVolume',
+    'ValueTraded': 'DoneValue',
+    'OrderQuantity': 'Quantity',
+    'OrderValue': 'Value',
+    'BuySell': 'BuySell',
+    'OrderSide': 'OrderSide',
+    'Lifetime': 'Lifetime',
+    'Exchange': 'Exchange',
+    'Destination': 'Destination',
+    'Currency': 'Currency',
+    'OrderType': 'OrderType',
+    'PriceInstruction': 'PriceInstruction',
+    'CreateDate': 'CreateDate',
+    'UpdateDate': 'UpdateDate',
+    'CumulativeNumberOfOrders': 'CumulativeNumberOfOrders',
+    'CumulativeOrderValue': 'CumulativeValue',
+    'CumulativeVolumeTraded': 'CumulativeDoneVolume',
+    'CumulativeValueTraded': 'CumulativeDoneValue',
+    'CumulativeOrderQuantity': 'CumulativeQuantity'
+}
 
 def create_business_intelligence_dashboard():
     # ============================================================
@@ -118,10 +157,10 @@ def create_business_intelligence_dashboard():
         key,
         variable_options=[
             "Price",
-            "DoneVolume",
-            "DoneValue",
-            "Quantity",
-            "Value",
+            "VolumeTraded",
+            "ValueTraded",
+            "OrderQuantity",
+            "OrderValue",
         ],
         variable_index=0,
     ):
@@ -132,13 +171,14 @@ def create_business_intelligence_dashboard():
             index=variable_index,
             key=key + "boxplot_variable",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "boxplot")
         )
         # Filter df for the top 5 security codes
         top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
         fig = make_subplots(rows=1, cols=len(top5_sec_code))
         for i, sec in enumerate(top5_sec_code, start=1):
             fig.add_trace(
-                go.Box(y=df[df["SecCode"] == sec][variable], name=sec), row=1, col=i
+                go.Box(y=df[df["SecCode"] == sec][column_names_dict[variable]], name=sec), row=1, col=i
             )
         fig.update_layout(
             title=f"Box Plots of {variable} by Top 5 SecCode",
@@ -147,9 +187,10 @@ def create_business_intelligence_dashboard():
             showlegend=False,
         )
         child_container.plotly_chart(fig, key=key + "boxplot")
+        update_bi_figures_description(key=key + "boxplot", fig=fig, chart_type="boxplot", vars=[variable, "SecCode"])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="boxplot", date_range="today", vars=[variable, "SecCode"]))
+            expander.write(st.session_state.bi_figures_description[key + "boxplot"])
 
 
     def create_pie_chart_for_each_security(
@@ -160,7 +201,6 @@ def create_business_intelligence_dashboard():
             "OrderSide",
             # "PriceInstruction",
             "Lifetime",
-            "ExecutionTime",
         ],
         variable_index=0,
     ):
@@ -171,13 +211,14 @@ def create_business_intelligence_dashboard():
             index=variable_index,
             key=key + "boxplot_variable",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "piechart")
         )
         top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
         specs = [[{"type": "domain"} for i in top5_sec_code]]
         fig = make_subplots(rows=1, cols=len(top5_sec_code), specs=specs)
         annotations = []
         for i, sec in enumerate(top5_sec_code, start=1):
-            value_counts = df[df["SecCode"] == sec][variable].value_counts()
+            value_counts = df[df["SecCode"] == sec][column_names_dict[variable]].value_counts()
             fig.add_trace(
                 go.Pie(labels=value_counts.index, values=value_counts, name=sec),
                 row=1,
@@ -200,10 +241,11 @@ def create_business_intelligence_dashboard():
             margin=dict(t=40, b=0),
             annotations=annotations,
         )
-        child_container.plotly_chart(fig, key=key + "boxplot")
+        child_container.plotly_chart(fig, key=key + "piechart")
+        update_bi_figures_description(key=key + "piechart", fig=fig, chart_type="piechart", vars=[variable, "SecCode"])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="piechart", date_range="today", vars=[variable, "SecCode"]))
+            expander.write(st.session_state.bi_figures_description[key + "piechart"])
 
     first_row = st.container()
     first_row_col1, first_row_col2 = first_row.columns([40, 60])
@@ -211,7 +253,7 @@ def create_business_intelligence_dashboard():
     create_pie_chart_for_each_security(parent_container=first_row_col2, key="5")
 
     # ============================================================
-    # Section: Box Plot and Pie Chart
+    # Section: Pie Chart, Bar Chart and Histogram
     # ============================================================
     def create_pie_chart(parent_container, key):
         child_container = parent_container.container(border=True)
@@ -226,22 +268,23 @@ def create_business_intelligence_dashboard():
                 "Destination",
                 "Currency",
                 "OrderType",
-                "ExecutionTime",
             ],
             index=0,
             key=key + "pie_variable",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "pie")
         )
-        value_counts = df[variable].value_counts()
+        value_counts = df[column_names_dict[variable]].value_counts()
         fig = px.pie(values=value_counts.values, names=value_counts.index).update_layout(
             title=f"Distribution of {variable}",
             height=200,
             margin=dict(t=30, b=0, l=0, r=0),
         )
         child_container.plotly_chart(fig, key=key + "pie")
+        update_bi_figures_description(key=key + "pie", fig=fig, chart_type="piechart", vars=[variable])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="piechart", date_range="today", vars=[variable]))
+            expander.write(st.session_state.bi_figures_description[key + "pie"])
 
 
     def create_bar_chart(parent_container, key):
@@ -256,14 +299,14 @@ def create_business_intelligence_dashboard():
                 "Exchange",
                 "Destination",
                 "Currency",
-                "OrderType",
-                "ExecutionTime",
+                # "OrderType",
             ],
             index=0,
             key=key + "bar_var",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "bar")
         )
-        value_counts = df[variable].value_counts()
+        value_counts = df[column_names_dict[variable]].value_counts()
         percentages = (value_counts / value_counts.sum() * 100).round(
             2
         )  # Calculate percentages
@@ -289,19 +332,20 @@ def create_business_intelligence_dashboard():
             xaxis_title=None,
         )
         child_container.plotly_chart(fig, key=key + "bar")
+        update_bi_figures_description(key=key + "bar", fig=fig, chart_type="barchart", vars=[variable])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="barchart", date_range="today", vars=[variable]))
+            expander.write(st.session_state.bi_figures_description[key + "bar"])
 
 
     def create_histogram(
         parent_container,
         key,
         variable_options=[
-            "DoneVolume",
-            "DoneValue",
-            "Quantity",
-            "Value",
+            "VolumeTraded",
+            "ValueTraded",
+            "OrderQuantity",
+            "OrderValue",
         ],
         variable_index=0,
     ):
@@ -312,19 +356,21 @@ def create_business_intelligence_dashboard():
             index=variable_index,
             key=key + "histogram_variable",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "histogram")
         )
         fig = px.histogram(
-            df, variable, color_discrete_sequence=["palegreen"]
+            df, column_names_dict[variable], color_discrete_sequence=["palegreen"]
         ).update_layout(
             title=f"Distribution of {variable}",
             height=200,
             margin=dict(t=30, b=0, l=0, r=0),
         )
         child_container.plotly_chart(fig, key=key + "histogram")
+        update_bi_figures_description(key=key + "histogram", fig=fig, chart_type="histogram", vars=[variable])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="histogram", date_range="today", vars=[variable]))
-
+            expander.write(st.session_state.bi_figures_description[key + "histogram"])
+            
     second_row = st.container()
     second_row_col1, second_row_col2, second_row_col3 = second_row.columns([20, 40, 40])
     create_pie_chart(parent_container=second_row_col1, key="6")
@@ -341,10 +387,10 @@ def create_business_intelligence_dashboard():
         x_axis_index=0,
         y_axis_options=[
             "CumulativeNumberOfOrders",
-            "CumulativeValue",
-            "CumulativeDoneVolume",
-            "CumulativeDoneValue",
-            "CumulativeQuantity",
+            "CumulativeOrderValue",
+            "CumulativeVolumeTraded",
+            "CumulativeValueTraded",
+            "CumulativeOrderQuantity",
         ],
         y_axis_index=0,
     ):
@@ -356,6 +402,7 @@ def create_business_intelligence_dashboard():
             index=y_axis_index,
             key=key + "line_y_axis",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "line")
         )
         x_axis = col2.selectbox(
             label="X axis variable",
@@ -363,13 +410,15 @@ def create_business_intelligence_dashboard():
             index=x_axis_index,
             key=key + "line_x_axis",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "line")
         )
-        fig = px.line(df, x=x_axis, y=x_axis + "_" + y_axis)
+        fig = px.line(df, x=x_axis, y=x_axis + "_" + column_names_dict[y_axis])
         fig = fig.update_layout(height=280, margin=dict(l=0, r=0, t=30, b=0))
         child_container.plotly_chart(fig, key=key + "line")
+        update_bi_figures_description(key=key + "line", fig=fig, chart_type="linechart", vars=[y_axis, x_axis])
         if enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="linechart", date_range="today", vars=[y_axis, x_axis]))
+            expander.write(st.session_state.bi_figures_description[key + "line"])
 
 
     def create_sankey(
@@ -388,14 +437,15 @@ def create_business_intelligence_dashboard():
             index=src_index,
             key=key + "sankey_source",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "sankey")
         )
-
         target = col2.selectbox(
             label="Target",
             options=target_options,
             index=target_index,
             key=key + "sankey_target",
             label_visibility="collapsed",
+            on_change=lambda: handle_bi_local_filter_change(key=key + "sankey")
         )
         if source == "SecCode":
             top5_sec_code = df["SecCode"].value_counts().nlargest(5).index
@@ -429,13 +479,11 @@ def create_business_intelligence_dashboard():
             )
         )
         fig = fig.update_layout(height=280, margin=dict(l=0, r=0, t=30, b=0))
-        # fig.update_layout()
         child_container.plotly_chart(fig, key=key + "sankey")
-
-        # Optional automated report section
+        update_bi_figures_description(key=key + "sankey", fig=fig, chart_type="sankey", vars=[source, target])
         if "enable_automated_report" in globals() and enable_automated_report:
             expander = child_container.expander("View automated report")
-            expander.write(fig_description_generator(fig=fig, dash_type="bi", chart_type="sankey", date_range="today", vars=[source, target]))
+            expander.write(st.session_state.bi_figures_description[key + "sankey"])
 
     third_row = st.container()
     third_row_col1, third_row_col2, third_row_col3 = third_row.columns(3)
@@ -458,12 +506,30 @@ def anom_results(df):
     "UpdateDate_CumulativeQuantity", "UpdateDate_CumulativeValue", "UpdateDate_CumulativeDoneVolume", "UpdateDate_CumulativeDoneValue",
     "CreateDate_CumulativeQuantity", "CreateDate_CumulativeValue", "CreateDate_CumulativeDoneVolume", "CreateDate_CumulativeDoneValue"] 
     anomaly_df = df.reset_index(drop=True)
-    anomaly_df = anomaly_df.drop(axis=1, columns = new_columns)
+    # anomaly_df = anomaly_df.drop(axis=1, columns = new_columns)
     # Get results for outlier analysis
     continuous_outlier_df, discrete_outlier_df = anomaly.outlier_results(anomaly_df.copy())
     # Get results for anomaly detection
     anomalies = anomaly.anomaly_results(anomaly_df.copy())
     return df.copy(), continuous_outlier_df, discrete_outlier_df, anomalies
+
+# Function for applying filters and caching the results
+def apply_filters(anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies):
+    # Apply filters for all results so that they can be displayed
+    temp = anomaly_df.copy()
+    temp = filter_dataframe(temp, "AccCode", traders)
+    temp = filter_dataframe(temp, "Exchange", exchanges)
+    temp = filter_dataframe(temp, "Currency", currencies)
+    continuous_outlier_df = filter_dataframe(continuous_outlier_df, "AccCode", traders)
+    continuous_outlier_df = filter_dataframe(continuous_outlier_df, "Exchange", exchanges)
+    continuous_outlier_df = filter_dataframe(continuous_outlier_df, "Currency", currencies)
+    discrete_outlier_df = filter_dataframe(discrete_outlier_df, "AccCode", traders)
+    discrete_outlier_df = filter_dataframe(discrete_outlier_df, "Exchange", exchanges)
+    discrete_outlier_df = filter_dataframe(discrete_outlier_df, "Currency", currencies)
+    anomalies = filter_dataframe(anomalies, "AccCode", traders)
+    anomalies = filter_dataframe(anomalies, "Exchange", exchanges)
+    anomalies = filter_dataframe(anomalies, "Currency", currencies)
+    return temp, continuous_outlier_df, discrete_outlier_df, anomalies
 
 # Function for displaying the results of anomaly detection
 def show_anom_scatter(anomaly_df, anomalies, selected_field):
@@ -484,41 +550,40 @@ def show_anom_scatter(anomaly_df, anomalies, selected_field):
 
 # Function to display anomalies with Plotly
 def show_anom_scatter_plotly(anomaly_df, anomalies, selected_field):
-
     # Filter out unique values for selected fields and prepare data
     anomaly_df = anomaly_df[['Price', 'Quantity', selected_field]].drop_duplicates()
     anomalies = anomalies[['Price', 'Quantity']].drop_duplicates()
-
     # Create the main scatter plot for anomaly data
-    if selected_field in ["AccCode", "SecCode"]:
-        # Too many unique codes, no legend for AccCode or SecCode
-        fig = px.scatter(anomaly_df, x="Price", y="Quantity", color=selected_field,
-                         title="Anomalies Detected in Provided Data",
-                         labels={"Price": "Price", "Quantity": "Quantity"},
-                         color_discrete_sequence=px.colors.qualitative.Set2)
-    else:
-        # Include legend for other fields
-        fig = px.scatter(anomaly_df, x="Price", y="Quantity", color=selected_field,
-                         title="Anomalies Detected in Provided Data",
-                         labels={"Price": "Price", "Quantity": "Quantity"},
-                         color_discrete_sequence=px.colors.qualitative.Set2)
-
-    # Overlay anomalies with a red 'X' marker
-    fig.add_scatter(x=anomalies['Price'], y=anomalies['Quantity'],
+    fig = go.Figure()
+    for field_value in anomaly_df[selected_field].unique():
+        subset = anomaly_df[anomaly_df[selected_field] == field_value]
+        fig.add_trace(go.Scatter(x=subset["Price"], y=subset["Quantity"], mode='markers', 
+                                 name=str(field_value), marker=dict(size=4),showlegend=True))
+    # Overlay anomalies with a red 'X' marker 
+    fig.add_trace(go.Scatter(x=anomalies['Price'], y=anomalies['Quantity'],
                     mode='markers', marker=dict(symbol="x", color="red", size=10),
-                    name="Anomalies")
-
-    # Display plot
+                    name="Anomalies", legendrank=1))
+    fig.update_layout(
+        title="Anomalies Detected in Provided Data",
+        xaxis_title="Price",
+        yaxis_title="Quantity"
+    )
     return fig, anomalies
 
 # Function to display the anomaly detection dashboard
 def create_anomaly_detection_dashboard():
+    # Load full dataset for selected date
+    anomaly_df = pd.read_excel("final_data.xlsx")
+    anomaly_df = anomaly_df[anomaly_df["CreateDate"].dt.date == st.session_state.date]
     st.header("Anomaly Detection Dashboard")
     # No dashboard if there is no data
-    if df.empty:
-        st.write("There is no data for the selected date.")
+    if anomaly_df.empty:
+        st.write("There is no data for the selected date and filters.")
         return
-    anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies = anom_results(df)
+    # Get anomaly detection results
+    anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies = anom_results(anomaly_df)
+    # Filter results based on current filter options
+    temp, continuous_outlier_df, discrete_outlier_df, anomalies = apply_filters(anomaly_df, continuous_outlier_df, discrete_outlier_df, anomalies)
     # Outlier analysis
     with st.container(border=True):
         st.subheader("Outlier Analysis Results")
@@ -529,6 +594,8 @@ def create_anomaly_detection_dashboard():
             # Display dataframe of flagged rows if any
             if not continuous_outlier_df.empty:
                 st.dataframe(continuous_outlier_df, height = 300)
+                # Brief description of outliers
+                st.write(f"There are {len(continuous_outlier_df)} continuous outliers identified in the data. These points have an absolute z-score larger than 3 in their respective columns, and could be signs of order activity that deviates from the norm or an erroneous entry.")
             else:
                 st.write("There are no continuous outliers identified.")
         with col2:
@@ -536,41 +603,47 @@ def create_anomaly_detection_dashboard():
             # Display dataframe of flagged rows if any
             if not discrete_outlier_df.empty:
                 st.dataframe(discrete_outlier_df, height = 300)
+                # Brief description of outliers
+                st.write(f"There are {len(discrete_outlier_df)} discrete outliers identified in the data. The value of these points have a significantly lower proportion than the rest of the data in their respective column, and could mean an unusual order or a new player in the market.")
             else:
                 st.write("There are no discrete outliers identified.")
     # Anomaly detection
     with st.container(border=True):
         st.subheader("Anomaly Detection Results")
         st.divider()
-        col1, col2 = st.columns(2)
-        with col1:
-            # User option to colour the scatterplot
-            st.write("Please select the field you would like to see the data coloured by.")
-            # Relevant discrete variables only
-            scatter_options = ['SecCode', 'AccCode','Side', 'BuySell', 'OrderSide', 'Exchange', 'Destination', 'Lifetime', 'OrderGiver', 'OrderTakerUserCode']
-            selected_field = st.selectbox('Field: ', scatter_options)
-            # Replot the scatterplot
-            if selected_field:
-                fig, new_anoms = show_anom_scatter_plotly(anomaly_df, anomalies, selected_field)
-            else:
-                fig, new_anoms = show_anom_scatter_plotly(anomaly_df, anomalies, 'SecCode')
-            # st.pyplot(fig)
-            st.plotly_chart(fig)
-        with col2:
-            # Display dataframe of anomalies if any
-            st.write("Anomalous Trades")
-            if not new_anoms.empty:
-                st.dataframe(new_anoms, height = 500)
-            else:
-                st.write("There are no anomalies identified.")
-        # Generate LLM description and insights based on graph and anomalies identified
-        anom_description = fig_description_generator(
-            fig=fig, 
-            dash_type="anomaly", 
-            chart_type="scatter", 
-            vars=[selected_field],
-            additional_info = new_anoms)
-        st.write(anom_description)
+        # Check if there is any data after filters applied
+        if anomalies.empty:
+            st.write("There are no anomalies identified.")
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                # User option to colour the scatterplot
+                st.write("Please select the field you would like to see the data coloured by.")
+                # Relevant discrete variables only
+                scatter_options = ['SecCode', 'AccCode','Side', 'BuySell', 'OrderSide', 'Exchange', 'Destination', 'Lifetime', 'OrderGiver', 'OrderTakerUserCode']
+                selected_field = st.selectbox('Field: ', scatter_options)
+                # Replot the scatterplot
+                if selected_field:
+                    fig, new_anoms = show_anom_scatter_plotly(temp, anomalies, selected_field)
+                else:
+                    fig, new_anoms = show_anom_scatter_plotly(temp, anomalies, 'SecCode')
+                # Display plot
+                st.plotly_chart(fig)
+            with col2:
+                # Display dataframe of anomalies if any
+                st.write("Anomalous Trades")
+                if not anomalies.empty:
+                    st.dataframe(anomalies, height = 500)
+                else:
+                    st.write("There are no anomalies identified.")
+            # Generate LLM description and insights based on graph and anomalies identified
+            anom_description = fig_description_generator(
+                fig=fig, 
+                dash_type="anomaly", 
+                chart_type="scatter", 
+                vars=[selected_field],
+                additional_info = anomalies)
+            st.write(anom_description)
 
 def create_asic_reporting_dashboard():
     #User Selection for Dashboard Type
