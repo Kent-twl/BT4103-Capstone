@@ -19,6 +19,11 @@ from src.llm.fig_description_generator import fig_description_generator
 #functional import
 from src.functions.asic_functions import *
 
+# ============================================================
+# Set up
+# ============================================================
+
+# Load data from source and feature engineer required columns
 @st.cache_data  # Cache the data loading so that every time the filter changes, data won't be loaded again
 def load_data(file_path="final_data.xlsx"):
     df = pd.read_excel(file_path)
@@ -38,7 +43,7 @@ def load_data(file_path="final_data.xlsx"):
     df["ExecutionVenueCategory"] = df["ExecutionVenue"].apply(classify_execution_venue)
     return df["AccCode"].unique(), df["Currency"].unique(), df["Exchange"].unique(), df
 
-
+# Filter dataframe based on user-selected options
 def filter_dataframe(df, column, options):
     return df[df[column].isin(options)]
 
@@ -49,42 +54,40 @@ list_of_traders, list_of_currencies, list_of_exchanges, df = load_data()
 # Filter by Date
 df = df[df["CreateDate"].dt.date == st.session_state.date]
 
-if "bi_figures" not in st.session_state:
-    st.session_state.bi_figures = {}
-
-# Sidebar Global Filters
-enable_automated_report = st.sidebar.checkbox("Enable Automated Report?", value=True)
-traders = st.sidebar.multiselect(
-    label="Filter for Account", options=list_of_traders, default=list_of_traders
-)
-df = filter_dataframe(df, "AccCode", traders)
-exchanges = st.sidebar.multiselect(
-    label="Filter for Exchange", options=list_of_exchanges, default=list_of_exchanges
-)
-df = filter_dataframe(df, "Exchange", exchanges)
-currencies = st.sidebar.multiselect(
-    label="Filter for Currency", options=list_of_currencies, default=list_of_currencies
-)
-df = filter_dataframe(df, "Currency", currencies)
-
-
-def generate_description(fig, dash_type="bi", chart_type="line", vars=[]):
-    # Generate text in the LLM based on fig
-    ret_output = fig_description_generator(fig, dash_type, chart_type, vars)
-
-    # Return the text
-    return ret_output
-
-
-# Dummy function for generating_automated_report
-def generate_automated_report(fig):
-    return "automated reported to be here"
-
-
+# Initialise session states for BI dashboard
 if "bi_figures_description" not in st.session_state:
     st.session_state.bi_figures_description = {}
 if "bi_figures_changed" not in st.session_state:
     st.session_state.bi_figures_changed = {}
+
+# Callback to handle when the global filters in the sidebar has changed
+def handle_bi_global_filter_change():
+    for key in st.session_state.bi_figures_changed:
+        st.session_state.bi_figures_changed[key] = True
+
+
+# Define Sidebar Global Filters
+enable_automated_report = st.sidebar.checkbox("Enable Automated Report?", value=True)
+traders = st.sidebar.multiselect(
+    label="Filter for Account", options=list_of_traders, default=list_of_traders, 
+    on_change=handle_bi_global_filter_change
+)
+df = filter_dataframe(df, "AccCode", traders)
+exchanges = st.sidebar.multiselect(
+    label="Filter for Exchange", options=list_of_exchanges, default=list_of_exchanges, 
+    on_change=handle_bi_global_filter_change
+)
+df = filter_dataframe(df, "Exchange", exchanges)
+currencies = st.sidebar.multiselect(
+    label="Filter for Currency", options=list_of_currencies, default=list_of_currencies,
+    on_change=handle_bi_global_filter_change
+)
+df = filter_dataframe(df, "Currency", currencies)
+
+
+# ============================================================
+# Dashboards
+# ============================================================
 
 # Callback to handle when the multiselect in the figures have changed
 def handle_bi_local_filter_change(key):
@@ -176,7 +179,6 @@ def create_business_intelligence_dashboard():
             "OrderSide",
             # "PriceInstruction",
             "Lifetime",
-            "ExecutionTime",
         ],
         variable_index=0,
     ):
@@ -244,7 +246,6 @@ def create_business_intelligence_dashboard():
                 "Destination",
                 "Currency",
                 "OrderType",
-                "ExecutionTime",
             ],
             index=0,
             key=key + "pie_variable",
@@ -276,8 +277,7 @@ def create_business_intelligence_dashboard():
                 "Exchange",
                 "Destination",
                 "Currency",
-                "OrderType",
-                "ExecutionTime",
+                # "OrderType",
             ],
             index=0,
             key=key + "bar_var",
