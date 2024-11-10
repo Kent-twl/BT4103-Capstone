@@ -1,6 +1,6 @@
 # BT4103 Capstone Project
 
-The project aims to generate key insights from trading data to improve efficiency of and add value to end-of-day reporting. 
+The project aims to generate key insights from order data to improve efficiency of and add value to end-of-day reporting. 
 
 ## Dependencies and environment variables
 - Python version: 3.11.7 
