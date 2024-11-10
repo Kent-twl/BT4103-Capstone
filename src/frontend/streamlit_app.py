@@ -78,6 +78,8 @@ def logout():
     # Reset the chatbot
     st.cache_resource.clear()
     st.session_state.messages = []
+    for key in st.session_state.bi_figures_changed:
+        st.session_state.bi_figures_changed[key] = True
     st.rerun()
 
 
