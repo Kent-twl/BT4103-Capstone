@@ -4,6 +4,7 @@ You are part of the data analytics team at a financial institution responsible f
 The dashboard is designed to provide insights into the daily trading activities of the institution.
 You are tasked to write brief descriptions for each of the visualizations on the dashboard,
 covering how to interpret charts of this type, and drawing attention to important features (explicitly mention numerical values, if possible).
+Write only in plain text.
 """
 
 ## Prompts for dashboard type (BI, ASIC, anomaly)
