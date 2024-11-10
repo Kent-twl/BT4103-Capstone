@@ -657,6 +657,9 @@ def create_asic_reporting_dashboard():
         # Dropdown options for the charts
         pie_chart_options = ['OrderCapacity', 'DirectedWholesale']
         bar_chart_options = ['IntermediaryID', 'OriginOfOrder', 'OrderTakerUserCode', 'OrderGiver', 'ExecutionVenue']
+        for column in pie_chart_options + bar_chart_options:
+            if column in df:
+                df[column] = pd.Categorical(df[column])
         
         # Multi-select for pie chart fields with no default selection
         st.markdown("#### Select fields for Pie Charts:")
@@ -696,9 +699,9 @@ def create_asic_reporting_dashboard():
                 dash_type="asic", 
                 chart_type="pie", 
                 date_range="today", 
-                vars=field,
-                additional_info={'DirectedWholesale': 'Information that indicates whether the order or transaction was submitted by a wholesale AOP client (i.e. an AOP client with which the market participant has a specific type of market access arrangement) with nondiscretionary routing and execution instructions. ‘Y’ for yes or ‘N’ for no. Default is ‘N’.', 'OrderCapacity': 'describes the capacity in which a market participant has submitted an order or entered into a transaction. Principal (‘P’), agent (‘A’) or both (‘M’)'
-                                }
+                vars=['OrderCapacity', 'DirectedWholesale'],
+                additional_info={'OrderCapacity': 'describes the capacity in which a market participant has submitted an order or entered into a transaction. Principal (‘P’), agent (‘A’) or both (‘M’),', 'DirectedWholesale': 'Information that indicates whether the order or transaction was submitted by a wholesale AOP client (i.e. an AOP client with which the market participant has a specific type of market access arrangement) with nondiscretionary routing and execution instructions. ‘Y’ for yes or ‘N’ for no. Default is ‘N’.'
+                }
                 )
                 st.markdown(area_description)
 
@@ -707,25 +710,33 @@ def create_asic_reporting_dashboard():
             for field in selected_bar_fields:
                 st.subheader(f"{field}")
 
+                # Convert the field to a categorical type
+                df[field] = pd.Categorical(df[field])
+
                 # Create the bar chart data
                 bar_chart_data = df[field].value_counts().reset_index()
                 bar_chart_data.columns = [field, 'Count']
 
                 # Ensure all expected categories are included
-                all_categories = df[field].unique()
+                all_categories = df[field].cat.categories
                 for category in all_categories:
                     if category not in bar_chart_data[field].values:
                         bar_chart_data = bar_chart_data.append({field: category, 'Count': 0}, ignore_index=True)
 
+                # Sort by category order to preserve categorical ordering
+                bar_chart_data[field] = pd.Categorical(bar_chart_data[field], categories=all_categories, ordered=True)
+                bar_chart_data = bar_chart_data.sort_values(by=field).reset_index(drop=True)
+
                 # Ensure data types are compatible
                 bar_chart_data['Count'] = bar_chart_data['Count'].astype(int)
-                bar_chart_data[field] = bar_chart_data[field].astype(str)
 
                 # Create the bar chart based on selected orientation
                 if bar_chart_orientation == "Vertical":
                     bar_fig = px.bar(bar_chart_data, x=field, y='Count', title=f"Count of {field}")
+                    bar_fig.update_xaxes(tickformat='~s')  
                 elif bar_chart_orientation == "Horizontal":
                     bar_fig = px.bar(bar_chart_data, y=field, x='Count', title=f"Count of {field}", orientation='h')
+                    bar_fig.update_yaxes(tickformat='~s')
                 else:
                     st.warning("Please select a bar chart orientation.")
                     continue  # Skip plotting if no valid orientation is selected
@@ -739,18 +750,21 @@ def create_asic_reporting_dashboard():
                 with col2:
                     st.write("Summary Table:")
                     st.dataframe(bar_chart_data)
-            
+
                 area_description = fig_description_generator(
-                fig=bar_fig, 
-                dash_type="asic", 
-                chart_type="bar", 
-                date_range="today", 
-                vars=field,
-                additional_info={'ExecutionVenue': 'the venue (licensed market, crossing system or other facility), if any, on which the transaction occurred. Since this is from the Order dataset, it will be null most of the time.', 'IntermediaryID' : 'information that enables identification of an AFS licensee intermediary (i.e. an AFS licensee with which the market participant has a specific type of market access arrangement) that is permitted to provide instructions to place an order or enter into a transaction.', 'OriginOfOrder':'information that assists identification of the person who provided instructions to place an order or enter into a transaction'
-                }
+                    fig=bar_fig, 
+                    dash_type="asic", 
+                    chart_type="bar", 
+                    date_range="today", 
+                    vars=['IntermediaryID', 'OriginOfOrder', 'OrderTakerUserCode', 'OrderGiver', 'ExecutionVenue'],
+                    additional_info={
+                        'ExecutionVenue': 'The venue (licensed market, crossing system or other facility), if any, on which the transaction occurred. It will be null most of the time in the Order dataset. An example of an execution venue (which is a number) is "1147"', 
+                        'IntermediaryID': 'Information that enables identification of an AFS licensee intermediary allowed to provide instructions to place an order or enter into a transaction. An example of an IntermediaryID is "5987474" ',
+                        'OriginOfOrder': 'Information that helps identify the person who provided instructions to place an order or enter into a transaction.'
+                    }
                 )
                 st.markdown(area_description)
-    
+
     #Clause-specific workflow           
     elif chart_type == 'Clause-specific Dashboard':
         # Dropdown menu for clause-specific charts

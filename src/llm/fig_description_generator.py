@@ -22,7 +22,7 @@ sys.path.append(os.path.abspath(os.path.join(os.getcwd())))
 sys.path.append(os.path.dirname(__file__)) ## Current directory
 
 ##add your file path
-#load_dotenv("/Users/matthewrobinson/Desktop/GitHub/BT4103-Capstone/src/frontend/env")   
+load_dotenv()   
 assert os.environ['LANGCHAIN_API_KEY'], "Please set the LANGCHAIN_API_KEY environment variable"
 assert os.environ['OPENAI_API_KEY'], "Please set the OPENAI_API_KEY environment variable"
 
