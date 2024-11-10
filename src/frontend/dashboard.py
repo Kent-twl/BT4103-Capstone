@@ -916,6 +916,7 @@ def create_asic_reporting_dashboard():
                 st.dataframe(filtered_df[['AccCode','CreateDate', 'OrderSide', 'OrderType', 'DoneVolume', 'Price', 'Quantity', 'ExecutionVenue']])
 
         elif selected_chart == "RG 265.51 (Suspicious Activity Reporting)":
+            st.subheader(selected_chart)
             # User input for large order threshold
             threshold = st.number_input("Threshold for large orders (number of orders):", min_value=1, value=10)
             
